@@ -2986,13 +2986,27 @@ public sealed class MainForm : RibbonForm
             return;
         }
 
-        string folder = Path.Combine(LocalDatabase.DatabaseFolder, "Reports", $"{DateTime.Now:yyyyMMdd_HHmmss}_diplomas_{SanitizeFilePart(contest.Number)}");
+        string folder = Path.Combine(LocalDatabase.DatabaseFolder, "Diplomas", $"Contest_{SanitizeFilePart(contest.Number)}");
         Directory.CreateDirectory(folder);
-        string file = Path.Combine(folder, "diplomas.html");
-        File.WriteAllText(file, BuildDiplomaHtml(contest, winners), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
-        Process.Start(new ProcessStartInfo { FileName = file, UseShellExecute = true });
-        Log("HTML-дипломы сформированы: " + file);
+        string allFile = Path.Combine(folder, "all_diplomas.html");
+        File.WriteAllText(allFile, BuildDiplomaHtml(contest, winners), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+        var placeCounts = winners
+            .GroupBy(x => x.PlaceNo)
+            .ToDictionary(x => x.Key, x => x.Count());
+
+        foreach (ContestRatingRow winner in winners)
+        {
+            string fileName = placeCounts[winner.PlaceNo] == 1
+                ? $"{winner.PlaceNo}_place.html"
+                : $"{winner.PlaceNo}_place_work_{winner.WorkNoText}.html";
+            string file = Path.Combine(folder, fileName);
+            File.WriteAllText(file, BuildDiplomaHtml(contest, new[] { winner }), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        }
+
+        Process.Start(new ProcessStartInfo { FileName = allFile, UseShellExecute = true });
+        Log("HTML-дипломы сформированы: " + folder);
     }
 
     private static string BuildDiplomaHtml(Contest contest, IReadOnlyList<ContestRatingRow> winners)
