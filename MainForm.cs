@@ -421,7 +421,7 @@ public sealed class MainForm : RibbonForm
         AddWorkflowAction(actionGroup, "Импорт работ из лички", ImportWorksFromPrivateMessagesDialog, "mail/forward", "Импортировать авторские сообщения из лички с предпросмотром.");
         AddWorkflowAction(actionGroup, "Форма голосования", () => NavigateToSection(1), "navigation/next", "Открыть рабочую форму приёма и проверки голосов.");
         AddWorkflowAction(actionGroup, "Импорт авторов", ImportWorksFromTextDialog, "business%20objects/bo_contact", "Применить или импортировать авторов работ из текста.");
-        AddWorkflowAction(actionGroup, "Подвести итоги", () => { SetCurrentContestStage(ContestStage.VotingClosed); NavigateToSection(4); RefreshResults(log: true); }, "business%20objects/bo_report", "Посчитать результаты и открыть таблицу итогов.");
+        AddWorkflowAction(actionGroup, "Подвести итоги", FinalizeContestResults, "business%20objects/bo_report", "Посчитать результаты и открыть таблицу итогов.");
         AddWorkflowAction(actionGroup, "Дипломы HTML", GenerateDiplomaHtml, "export/exporttohtml", "Сформировать HTML-дипломы по текущим итогам.");
         AddWorkflowAction(actionGroup, "Закрыть + новый", CloseContestAndOpenNextDialog, "actions/new", "Закрыть текущий конкурс и открыть следующий.");
         rpCurrent.Groups.Add(actionGroup);
@@ -857,7 +857,7 @@ public sealed class MainForm : RibbonForm
 
         AttachGridPopup(grid, viewVotes, "Голоса конкурса",
             GridMenuCommand.Item("Проверить текст", PreviewVotes),
-            GridMenuCommand.Item("Принять в базу", ImportVotes),
+            GridMenuCommand.Item("Принять голос", ImportVotes),
             GridMenuCommand.Item("Авточек правил", () => SaveVotePreviewReport(openFolder: true)),
             GridMenuCommand.Item("Показать базу конкурса", LoadGridFromStore),
             GridMenuCommand.Item("Очистить голоса конкурса", ClearContestVotes),
@@ -887,12 +887,12 @@ public sealed class MainForm : RibbonForm
             GridMenuCommand.Item("Сохранить настройки", () => SaveContestSettings(log: true)));
 
         AttachGridPopup(gridResults, viewResults, "Итоги",
-            GridMenuCommand.Item("Обновить итоги", () => RefreshResults(log: true)),
+            GridMenuCommand.Item("Подвести итоги", FinalizeContestResults),
             GridMenuCommand.Item("Скопировать протокол", CopyFinalReportToClipboard),
             GridMenuCommand.Item("Скопировать победителей", CopyWinnersToClipboard),
-            GridMenuCommand.Item("Сформировать Excel", GenerateExcel),
+            GridMenuCommand.Item("Экспорт в Excel", GenerateExcel),
             GridMenuCommand.Item("Сохранить пакет отчётов", ExportCurrentContestReportPackage),
-            GridMenuCommand.Item("HTML-протокол", () => ExportCurrentContestHtml(openPrintVersion: false)),
+            GridMenuCommand.Item("Сохранить HTML", () => ExportCurrentContestHtml(openPrintVersion: false)),
             GridMenuCommand.Item("Печать HTML", () => ExportCurrentContestHtml(openPrintVersion: true)),
             GridMenuCommand.Item("Открыть отчёты", OpenReportsFolder));
 
@@ -1507,7 +1507,7 @@ public sealed class MainForm : RibbonForm
         var btnPreview = new Button { Text = "Проверить текст", Width = 150, Height = 34 };
         btnPreview.Click += (_, _) => PreviewVotes();
 
-        var btnImport = new Button { Text = "Принять в базу", Width = 150, Height = 34 };
+        var btnImport = new Button { Text = "Принять голос", Width = 150, Height = 34 };
         btnImport.Click += (_, _) => ImportVotes();
 
         var btnPreviewReport = new Button { Text = "Авточек правил", Width = 150, Height = 34 };
@@ -1542,16 +1542,31 @@ public sealed class MainForm : RibbonForm
     {
         var group = new GroupBox { Text = "Данные конкурса", Dock = DockStyle.Fill };
         grid = CreateGrid("gridVotes", out viewVotes, readOnly: true, multiSelect: false);
+        viewVotes.RowStyle += (_, e) => PaintVoteRow(e);
         AddGridColumn(viewVotes, nameof(GridRow.VoterName), "Голосующий", 220);
         AddGridColumn(viewVotes, nameof(GridRow.WorkNo), "№ работы", 90);
         AddGridColumn(viewVotes, nameof(GridRow.VotedScoreText), "Проголосовал", 105);
         AddGridColumn(viewVotes, nameof(GridRow.AcceptedScoreText), "Принято", 90);
         AddGridColumn(viewVotes, nameof(GridRow.Score), "Итог", 70);
+        AddGridColumn(viewVotes, nameof(GridRow.Status), "Статус", 130);
         AddGridColumn(viewVotes, nameof(GridRow.RuleNote), "Правило", 220);
         AddGridColumn(viewVotes, nameof(GridRow.Comment), "Комментарий", 260);
         AddGridColumn(viewVotes, nameof(GridRow.UpdatedAt), "Обновлено", 150);
         group.Controls.Add(grid);
         return group;
+    }
+
+    private void PaintVoteRow(RowStyleEventArgs e)
+    {
+        if (e.RowHandle < 0 || viewVotes.GetRow(e.RowHandle) is not GridRow row)
+            return;
+
+        if (row.IsSelfVote)
+            e.Appearance.BackColor = Color.FromArgb(255, 226, 226);
+        else if (row.IsRuleChanged)
+            e.Appearance.BackColor = Color.FromArgb(255, 244, 204);
+        else
+            e.Appearance.BackColor = Color.FromArgb(235, 247, 235);
     }
 
     private Control BuildLogPanel()
@@ -1805,8 +1820,8 @@ public sealed class MainForm : RibbonForm
             WrapContents = false
         };
 
-        var btnRefresh = new Button { Text = "Обновить итоги", Width = 160, Height = 34 };
-        btnRefresh.Click += (_, _) => RefreshResults();
+        var btnRefresh = new Button { Text = "Подвести итоги", Width = 160, Height = 34 };
+        btnRefresh.Click += (_, _) => FinalizeContestResults();
 
         var btnCopyReport = new Button { Text = "Скопировать протокол", Width = 190, Height = 34 };
         btnCopyReport.Click += (_, _) => CopyFinalReportToClipboard();
@@ -1814,13 +1829,13 @@ public sealed class MainForm : RibbonForm
         var btnCopyWinners = new Button { Text = "Скопировать победителей", Width = 210, Height = 34 };
         btnCopyWinners.Click += (_, _) => CopyWinnersToClipboard();
 
-        var btnGenerate = new Button { Text = "Сформировать Excel и открыть", Width = 230, Height = 34 };
+        var btnGenerate = new Button { Text = "Экспорт в Excel", Width = 160, Height = 34 };
         btnGenerate.Click += (_, _) => GenerateExcel();
 
         var btnExportPackage = new Button { Text = "Сохранить пакет отчётов", Width = 210, Height = 34 };
         btnExportPackage.Click += (_, _) => ExportCurrentContestReportPackage();
 
-        var btnHtml = new Button { Text = "HTML-протокол", Width = 160, Height = 34 };
+        var btnHtml = new Button { Text = "Сохранить HTML", Width = 160, Height = 34 };
         btnHtml.Click += (_, _) => ExportCurrentContestHtml(openPrintVersion: false);
 
         var btnPrint = new Button { Text = "Печать HTML", Width = 140, Height = 34 };
@@ -1841,6 +1856,8 @@ public sealed class MainForm : RibbonForm
         AddGridColumn(viewResults, nameof(ContestRatingRow.Author), "Автор", 210);
         AddGridColumn(viewResults, nameof(ContestRatingRow.Topic), "Тема", 150);
         AddGridColumn(viewResults, nameof(ContestRatingRow.Rate), "Итог", 75);
+        AddGridColumn(viewResults, nameof(ContestRatingRow.AcceptedText), "Принято", 85);
+        AddGridColumn(viewResults, nameof(ContestRatingRow.VoteStatusText), "Голос есть", 95);
         AddGridColumn(viewResults, nameof(ContestRatingRow.AcceptedVotes), "Гол.", 70);
         AddGridColumn(viewResults, nameof(ContestRatingRow.AverageText), "Средн.", 80);
         AddGridColumn(viewResults, nameof(ContestRatingRow.MaxVotes), "Max", 65);
@@ -1951,6 +1968,7 @@ public sealed class MainForm : RibbonForm
         AddGridColumn(viewWorks, nameof(ContestWork.Title), "Название работы", 320, editable: true);
         AddGridColumn(viewWorks, nameof(ContestWork.Author), "Автор", 240, editable: true);
         AddGridColumn(viewWorks, nameof(ContestWork.Topic), "Тема", 170, editable: true);
+        AddGridColumn(viewWorks, nameof(ContestWork.HasVotes), "Есть голоса", 95);
 
 
         group.Controls.Add(gridWorks);
@@ -1963,6 +1981,7 @@ public sealed class MainForm : RibbonForm
         gridVoters = CreateGrid("gridVoters", out viewVoters, readOnly: false, multiSelect: true, allowNewRows: true);
         AddGridColumn(viewVoters, nameof(VoterSetting.Name), "Имя голосующего", 360, editable: true);
         AddGridColumn(viewVoters, nameof(VoterSetting.MustVote), "Обязан голосовать", 150, editable: true);
+        AddGridColumn(viewVoters, nameof(VoterSetting.HasVoted), "Проголосовал", 120);
 
         group.Controls.Add(gridVoters);
         return group;
@@ -2059,7 +2078,7 @@ public sealed class MainForm : RibbonForm
         txtOutput.Text = _settings.OutputFolder;
 
         ReloadContests();
-        Log("Готово. Выбери конкурс, настрой работы/голосующих, вставь голосование и нажми \"Принять в базу\".");
+        Log("Готово. Выбери конкурс, настрой работы/голосующих, вставь голосование и нажми \"Принять голос\".");
     }
 
     private void ReloadContests(string? selectId = null)
@@ -3356,6 +3375,15 @@ public sealed class MainForm : RibbonForm
 
             foreach (Contest contest in selectedContests)
             {
+                if (finalVotesByContestId.TryGetValue(contest.Id, out List<VoteEntry>? finalVotes))
+                    SyncVoteFlags(contest, finalVotes);
+            }
+
+            if (votesToSave.Count > 0)
+                _store.SaveContests(_contests);
+
+            foreach (Contest contest in selectedContests)
+            {
                 List<VoteEntry> storedVotes = _store.LoadVotes(contest.Id);
                 finalVotesByContestId[contest.Id] = storedVotes;
                 _rmStore.Sync(contest, storedVotes);
@@ -3708,6 +3736,8 @@ public sealed class MainForm : RibbonForm
                 vote.UpdatedAt = DateTime.Now;
             }
             _store.SaveVotes(contest.Id, import.Votes);
+            SyncVoteFlags(contest, import.Votes);
+            _store.SaveContests(_contests);
         }
 
         _rmStore.Sync(contest, import.Votes);
@@ -4140,6 +4170,7 @@ public sealed class MainForm : RibbonForm
 
         _store.SaveVotes(contest.Id, votes);
         EnsureContestSettingsFromImport(contest, result);
+        SyncVoteFlags(contest, votes);
         _store.SaveContests(_contests);
         string rmDbPath = _rmStore.Sync(contest, votes);
         BindContestSettings(contest);
@@ -4230,7 +4261,14 @@ public sealed class MainForm : RibbonForm
             return;
         }
 
-        var rows = _store.LoadVotes(contest.Id)
+        var votes = _store.LoadVotes(contest.Id);
+        if (SyncVoteFlags(contest, votes))
+        {
+            _store.SaveContests(_contests);
+            BindContestSettings(contest);
+        }
+
+        var rows = votes
             .OrderBy(x => x.VoterName)
             .ThenBy(x => x.WorkNo)
             .Select(x => new GridRow(x))
@@ -4260,6 +4298,8 @@ public sealed class MainForm : RibbonForm
             return;
 
         _store.ClearVotes(contest.Id);
+        SyncVoteFlags(contest, new List<VoteEntry>());
+        _store.SaveContests(_contests);
         _rmStore.Sync(contest, new List<VoteEntry>());
         LoadGridFromStore();
         RefreshVoteStatus(log: false);
@@ -5320,6 +5360,19 @@ public sealed class MainForm : RibbonForm
         Log(added == 0 ? "Выбранные люди уже есть в списке судей." : $"Добавлено в обязательные судьи: {added}.");
     }
 
+    private void FinalizeContestResults()
+    {
+        Contest? contest = CurrentContest;
+        if (contest is null)
+        {
+            MessageBox.Show(this, "Сначала выбери или создай конкурс.", "Нет конкурса", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        SetCurrentContestStage(ContestStage.VotingClosed);
+        RefreshResults(log: true);
+    }
+
 
     private ContestResultsReport? RefreshResults(bool log = true)
     {
@@ -5493,6 +5546,46 @@ public sealed class MainForm : RibbonForm
         contest.UpdatedAt = DateTime.Now;
     }
 
+    private bool SyncVoteFlags(Contest contest, IReadOnlyCollection<VoteEntry> votes)
+    {
+        var votedWorkNumbers = votes
+            .Where(x => x.WorkNo > 0)
+            .Select(x => x.WorkNo)
+            .ToHashSet();
+
+        var votedVoterKeys = votes
+            .Select(x => string.IsNullOrWhiteSpace(x.VoterKey) ? NameNormalizer.Normalize(x.VoterName) : x.VoterKey)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        bool changed = false;
+
+        foreach (ContestWork work in contest.Works)
+        {
+            bool hasVotes = votedWorkNumbers.Contains(work.Number);
+            if (work.HasVotes != hasVotes)
+            {
+                work.HasVotes = hasVotes;
+                changed = true;
+            }
+        }
+
+        foreach (VoterSetting voter in contest.Voters)
+        {
+            bool hasVoted = votedVoterKeys.Contains(NameNormalizer.Normalize(voter.Name));
+            if (voter.HasVoted != hasVoted)
+            {
+                voter.HasVoted = hasVoted;
+                changed = true;
+            }
+        }
+
+        if (changed)
+            contest.UpdatedAt = DateTime.Now;
+
+        return changed;
+    }
+
     private void SaveContestSettings(bool log = true)
     {
         var contest = CurrentContest;
@@ -5552,7 +5645,8 @@ public sealed class MainForm : RibbonForm
                 Title = (work.Title ?? string.Empty).Trim(),
                 Author = (work.Author ?? string.Empty).Trim(),
                 Topic = (work.Topic ?? string.Empty).Trim(),
-                Content = (work.Content ?? string.Empty).Trim()
+                Content = (work.Content ?? string.Empty).Trim(),
+                HasVotes = work.HasVotes
             });
         }
 
@@ -5571,7 +5665,7 @@ public sealed class MainForm : RibbonForm
             if (string.IsNullOrWhiteSpace(key) || !used.Add(key))
                 continue;
 
-            result.Add(new VoterSetting { Name = name, MustVote = voter.MustVote });
+            result.Add(new VoterSetting { Name = name, MustVote = voter.MustVote, HasVoted = voter.HasVoted });
         }
 
         return result;
@@ -6079,6 +6173,12 @@ public sealed class MainForm : RibbonForm
             RuleNote = entry.RuleNote;
             Comment = entry.Comment;
             UpdatedAt = entry.UpdatedAt;
+            IsSelfVote = RuleNote.Contains("самоголос", StringComparison.OrdinalIgnoreCase);
+            IsRuleChanged = entry.WasChangedByRules
+                || IsSelfVote
+                || !string.IsNullOrWhiteSpace(RuleNote)
+                || !string.Equals(VotedScoreText, AcceptedScoreText, StringComparison.OrdinalIgnoreCase);
+            Status = IsSelfVote ? "Самоголос = 0" : IsRuleChanged ? "Исправлено" : "ОК";
         }
 
         public string VoterName { get; }
@@ -6088,8 +6188,11 @@ public sealed class MainForm : RibbonForm
         public string OriginalScoreText { get; }
         public string VotedScoreText { get; }
         public string AcceptedScoreText { get; }
+        public string Status { get; }
         public string RuleNote { get; }
         public string Comment { get; }
         public DateTime UpdatedAt { get; }
+        public bool IsSelfVote { get; }
+        public bool IsRuleChanged { get; }
     }
 }

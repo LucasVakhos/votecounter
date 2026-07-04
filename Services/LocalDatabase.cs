@@ -6,7 +6,7 @@ namespace VoteCounter.Services;
 
 internal static class LocalDatabase
 {
-    private const int CurrentSchemaVersion = 21;
+    private const int CurrentSchemaVersion = 22;
     private static readonly object SyncRoot = new();
     private static bool _initialized;
 
@@ -107,6 +107,7 @@ internal static class LocalDatabase
                 Author TEXT NOT NULL,
                 Topic TEXT NOT NULL,
                 Content TEXT NOT NULL,
+                HasVotes INTEGER NOT NULL DEFAULT 0,
                 SortNo INTEGER NOT NULL,
                 PRIMARY KEY(ContestId, Number),
                 FOREIGN KEY(ContestId) REFERENCES Contests(Id) ON DELETE CASCADE
@@ -116,6 +117,7 @@ internal static class LocalDatabase
                 ContestId TEXT NOT NULL,
                 Name TEXT NOT NULL,
                 MustVote INTEGER NOT NULL,
+                HasVoted INTEGER NOT NULL DEFAULT 0,
                 SortNo INTEGER NOT NULL,
                 PRIMARY KEY(ContestId, Name),
                 FOREIGN KEY(ContestId) REFERENCES Contests(Id) ON DELETE CASCADE
@@ -144,7 +146,7 @@ internal static class LocalDatabase
             );
 
             INSERT INTO SchemaInfo(Key, Value)
-            VALUES('SchemaVersion', '21')
+            VALUES('SchemaVersion', '22')
             ON CONFLICT(Key) DO UPDATE SET Value = excluded.Value;
             """);
 
@@ -155,6 +157,8 @@ internal static class LocalDatabase
         EnsureColumn(connection, "Contests", "StartedAt", "TEXT NOT NULL DEFAULT ''");
         EnsureColumn(connection, "Contests", "ClosedAt", "TEXT NOT NULL DEFAULT ''");
         EnsureColumn(connection, "Contests", "IsActive", "INTEGER NOT NULL DEFAULT 1");
+        EnsureColumn(connection, "ContestWorks", "HasVotes", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(connection, "VoterSettings", "HasVoted", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(connection, "Votes", "VotedScore", "REAL NOT NULL DEFAULT 0");
         EnsureColumn(connection, "Votes", "VotedScoreText", "TEXT NOT NULL DEFAULT ''");
         EnsureColumn(connection, "Votes", "AcceptedScore", "REAL NOT NULL DEFAULT 0");
@@ -350,8 +354,8 @@ internal static class LocalDatabase
                 using var insertWork = connection.CreateCommand();
                 insertWork.Transaction = transaction;
                 insertWork.CommandText = """
-                    INSERT OR REPLACE INTO ContestWorks(ContestId, Number, Title, Author, Topic, Content, SortNo)
-                    VALUES($contestId, $number, $title, $author, $topic, $content, $sortNo);
+                    INSERT OR REPLACE INTO ContestWorks(ContestId, Number, Title, Author, Topic, Content, HasVotes, SortNo)
+                    VALUES($contestId, $number, $title, $author, $topic, $content, $hasVotes, $sortNo);
                     """;
                 insertWork.Parameters.AddWithValue("$contestId", contest.Id);
                 insertWork.Parameters.AddWithValue("$number", work.Number);
@@ -359,6 +363,7 @@ internal static class LocalDatabase
                 insertWork.Parameters.AddWithValue("$author", work.Author ?? string.Empty);
                 insertWork.Parameters.AddWithValue("$topic", work.Topic ?? string.Empty);
                 insertWork.Parameters.AddWithValue("$content", work.Content ?? string.Empty);
+                insertWork.Parameters.AddWithValue("$hasVotes", ToDbBool(work.HasVotes));
                 insertWork.Parameters.AddWithValue("$sortNo", workSortNo++);
                 insertWork.ExecuteNonQuery();
             }
@@ -377,12 +382,13 @@ internal static class LocalDatabase
                 using var insertVoter = connection.CreateCommand();
                 insertVoter.Transaction = transaction;
                 insertVoter.CommandText = """
-                    INSERT OR REPLACE INTO VoterSettings(ContestId, Name, MustVote, SortNo)
-                    VALUES($contestId, $name, $mustVote, $sortNo);
+                    INSERT OR REPLACE INTO VoterSettings(ContestId, Name, MustVote, HasVoted, SortNo)
+                    VALUES($contestId, $name, $mustVote, $hasVoted, $sortNo);
                     """;
                 insertVoter.Parameters.AddWithValue("$contestId", contest.Id);
                 insertVoter.Parameters.AddWithValue("$name", voter.Name.Trim());
                 insertVoter.Parameters.AddWithValue("$mustVote", ToDbBool(voter.MustVote));
+                insertVoter.Parameters.AddWithValue("$hasVoted", ToDbBool(voter.HasVoted));
                 insertVoter.Parameters.AddWithValue("$sortNo", voterSortNo++);
                 insertVoter.ExecuteNonQuery();
             }

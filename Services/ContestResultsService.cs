@@ -50,6 +50,7 @@ public sealed class ContestResultsService
                 Title = work.Title ?? string.Empty,
                 Author = work.Author ?? string.Empty,
                 Topic = work.Topic ?? string.Empty,
+                Accepted = true,
                 Rate = rate,
                 AcceptedVotes = acceptedCount,
                 SelfVotes = selfVotes,

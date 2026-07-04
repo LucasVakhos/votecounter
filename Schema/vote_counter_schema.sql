@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS ContestWorks(
     Author TEXT NOT NULL,
     Topic TEXT NOT NULL,
     Content TEXT NOT NULL,
+    HasVotes INTEGER NOT NULL DEFAULT 0,
     SortNo INTEGER NOT NULL,
     PRIMARY KEY(ContestId, Number),
     FOREIGN KEY(ContestId) REFERENCES Contests(Id) ON DELETE CASCADE
@@ -72,6 +73,7 @@ CREATE TABLE IF NOT EXISTS VoterSettings(
     ContestId TEXT NOT NULL,
     Name TEXT NOT NULL,
     MustVote INTEGER NOT NULL,
+    HasVoted INTEGER NOT NULL DEFAULT 0,
     SortNo INTEGER NOT NULL,
     PRIMARY KEY(ContestId, Name),
     FOREIGN KEY(ContestId) REFERENCES Contests(Id) ON DELETE CASCADE
@@ -100,5 +102,5 @@ CREATE TABLE IF NOT EXISTS Votes(
 );
 
 INSERT INTO SchemaInfo(Key, Value)
-VALUES('SchemaVersion', '21')
+VALUES('SchemaVersion', '22')
 ON CONFLICT(Key) DO UPDATE SET Value = excluded.Value;

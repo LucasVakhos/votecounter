@@ -197,7 +197,7 @@ public sealed class LocalStore
         var works = new List<ContestWork>();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Number, Title, Author, Topic, Content
+            SELECT Number, Title, Author, Topic, Content, HasVotes
             FROM ContestWorks
             WHERE ContestId = $contestId
             ORDER BY SortNo, Number;
@@ -213,7 +213,8 @@ public sealed class LocalStore
                 Title = GetString(reader, 1),
                 Author = GetString(reader, 2),
                 Topic = GetString(reader, 3),
-                Content = GetString(reader, 4)
+                Content = GetString(reader, 4),
+                HasVotes = GetBool(reader, 5)
             });
         }
 
@@ -225,7 +226,7 @@ public sealed class LocalStore
         var voters = new List<VoterSetting>();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Name, MustVote
+            SELECT Name, MustVote, HasVoted
             FROM VoterSettings
             WHERE ContestId = $contestId
             ORDER BY SortNo, Name;
@@ -238,7 +239,8 @@ public sealed class LocalStore
             voters.Add(new VoterSetting
             {
                 Name = GetString(reader, 0),
-                MustVote = GetBool(reader, 1)
+                MustVote = GetBool(reader, 1),
+                HasVoted = GetBool(reader, 2)
             });
         }
 

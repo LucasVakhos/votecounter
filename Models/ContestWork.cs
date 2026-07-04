@@ -7,6 +7,7 @@ public sealed class ContestWork
     public string Author { get; set; } = string.Empty;
     public string Topic { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
+    public bool HasVotes { get; set; }
 
     public ContestWork Clone()
     {
@@ -16,7 +17,8 @@ public sealed class ContestWork
             Title = Title,
             Author = Author,
             Topic = Topic,
-            Content = Content
+            Content = Content,
+            HasVotes = HasVotes
         };
     }
 }
