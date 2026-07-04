@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ForceDesignerDpiUnaware>true</ForceDesignerDpiUnaware>
+    <ApplicationIcon>Resources\Images\votecounter.ico</ApplicationIcon>
+    <AssemblyName>VoteCounter</AssemblyName>
+    <RootNamespace>VoteCounter</RootNamespace>
+    <Version>1.41.4-ribbon-icons-hints</Version>
+
+    <!-- Fix for VS/MSBuild setups that pass the literal **/*.resx pattern into GenerateResource.
+         We do not use designer resources here, so resource discovery is disabled explicitly. -->
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+    <AssemblyTitle>VoteCounter</AssemblyTitle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Update="MainForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <None Include="MainForm.resx" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Рабочую базу никогда не кладём в ZIP/Output: иначе новый чекпойнт может затереть данные пользователя. -->
+    <None Remove="Database\*.db" />
+    <None Remove="Database\*.db-shm" />
+    <None Remove="Database\*.db-wal" />
+    <None Remove="Database\Backups\**\*.*" />
+    <None Remove="Database\Reports\**\*.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.13" />
+    <PackageReference Include="FirebirdSql.Data.FirebirdClient" Version="10.3.4" />
+    <PackageReference Include="DevExpress.Win" Version="25.2.8" />
+    <PackageReference Include="DevExpress.Win.Design" Version="25.2.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Samples\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Help\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="README.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Schema\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Resources\Images\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="хня\DELPHI_PORT_STAGES.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="хня\DELPHI_RECEPTION_NOTES.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

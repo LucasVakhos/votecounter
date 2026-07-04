@@ -1,0 +1,21 @@
+# Build output
+bin/
+obj/
+
+# Verification and temporary work folders
+.brand_verify_out/
+.brand_verify_user_image/
+.img_verify_out/
+.img_verify_out2/
+.pm_verify_out/
+.sample_design/
+.trash/
+
+# Archive artifacts
+*.zip
+
+# IDE user settings
+*.csproj.user
+
+# Local editor settings
+.vscode/
