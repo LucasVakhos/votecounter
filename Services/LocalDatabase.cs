@@ -16,12 +16,15 @@ internal static class LocalDatabase
     public static SqliteConnection OpenConnection()
     {
         Initialize();
+        Directory.CreateDirectory(DatabaseFolder);
         var connection = new SqliteConnection($"Data Source={DatabasePath};Cache=Shared");
         connection.Open();
 
         using var pragma = connection.CreateCommand();
         pragma.CommandText = "PRAGMA foreign_keys = ON;";
         pragma.ExecuteNonQuery();
+
+        EnsureSchema(connection);
         return connection;
     }
 
@@ -39,8 +42,16 @@ internal static class LocalDatabase
             using var connection = new SqliteConnection($"Data Source={DatabasePath};Cache=Shared");
             connection.Open();
             ExecuteNonQuery(connection, "PRAGMA foreign_keys = ON;");
-            CreateSchema(connection);
+            EnsureSchema(connection);
             _initialized = true;
+        }
+    }
+
+    private static void EnsureSchema(SqliteConnection connection)
+    {
+        lock (SyncRoot)
+        {
+            CreateSchema(connection);
         }
     }
 

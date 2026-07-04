@@ -11,7 +11,7 @@
     <ApplicationIcon>Resources\Images\votecounter.ico</ApplicationIcon>
     <AssemblyName>VoteCounter</AssemblyName>
     <RootNamespace>VoteCounter</RootNamespace>
-    <Version>1.43.2-results-actions</Version>
+    <Version>1.43.3-db-rebuild-safe</Version>
 
     <!-- Fix for VS/MSBuild setups that pass the literal **/*.resx pattern into GenerateResource.
          We do not use designer resources here, so resource discovery is disabled explicitly. -->
