@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VoteCounter HTML</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="../Resources/Images/votecounter-icon.png" alt="">
+        <div>
+          <strong>VoteCounter</strong>
+          <span>HTML</span>
+        </div>
+      </div>
+      <nav class="nav" aria-label="Разделы">
+        <button class="nav-item active" data-view="contests" title="Конкурсы">Конкурсы</button>
+        <button class="nav-item" data-view="votes" title="Голосование">Голосование</button>
+        <button class="nav-item" data-view="settings" title="Настройки конкурса">Настройки</button>
+        <button class="nav-item" data-view="control" title="Контроль голосования">Контроль</button>
+        <button class="nav-item" data-view="results" title="Итоги">Итоги</button>
+        <button class="nav-item" data-view="changes" title="Правки правил">Правки</button>
+        <button class="nav-item" data-view="people" title="Участники">Участники</button>
+      </nav>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <label class="contest-picker">
+          <span>Конкурс</span>
+          <select id="contestSelect"></select>
+        </label>
+        <div class="top-actions">
+          <button id="backupBtn" class="tool-btn" title="Скачать резервную копию JSON">JSON</button>
+          <label class="tool-btn file-btn" title="Загрузить резервную копию JSON">
+            Импорт
+            <input id="restoreInput" type="file" accept="application/json">
+          </label>
+        </div>
+      </header>
+
+      <section id="view-contests" class="view active">
+        <div class="section-head">
+          <h1>Конкурсы</h1>
+          <div class="actions">
+            <button id="newContestBtn">Новый</button>
+            <button id="duplicateContestBtn">Копия</button>
+            <button id="deleteContestBtn" class="danger">Удалить</button>
+          </div>
+        </div>
+        <div class="two-column">
+          <div class="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th>Название</th>
+                  <th>Работ</th>
+                  <th>Судей</th>
+                  <th>Голосов</th>
+                  <th>Обновлён</th>
+                </tr>
+              </thead>
+              <tbody id="contestRows"></tbody>
+            </table>
+          </div>
+          <div class="panel">
+            <h2>Карточка конкурса</h2>
+            <div id="contestCard" class="metrics"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-votes" class="view">
+        <div class="section-head">
+          <h1>Голосование</h1>
+          <div class="actions">
+            <button id="parseVotesBtn">Разобрать</button>
+            <button id="acceptVotesBtn">Принять</button>
+            <button id="clearVoteTextBtn">Очистить</button>
+          </div>
+        </div>
+        <div class="split">
+          <textarea id="votesText" spellcheck="false" placeholder="Имя голосующего&#10;01 - 4&#10;02 - 3+&#10;03 - 2"></textarea>
+          <div class="panel">
+            <h2>Предпросмотр</h2>
+            <div id="voteWarnings" class="warnings"></div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Голосующий</th>
+                  <th>Работа</th>
+                  <th>Оценка</th>
+                  <th>Принято</th>
+                  <th>Правило</th>
+                </tr>
+              </thead>
+              <tbody id="votePreviewRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-settings" class="view">
+        <div class="section-head">
+          <h1>Настройки конкурса</h1>
+          <div class="actions">
+            <button id="saveSettingsBtn">Сохранить</button>
+            <button id="importWorksBtn">Импорт работ</button>
+            <button id="applyAuthorsBtn">Раскрыть авторов</button>
+          </div>
+        </div>
+        <div class="settings-grid">
+          <div class="panel form-grid">
+            <label>Номер <input id="contestNumber" type="text"></label>
+            <label>Название <input id="contestName" type="text"></label>
+            <label>Ведущий <input id="hostName" type="text"></label>
+            <label>Следующий ведущий <input id="nextHostName" type="text"></label>
+            <label>Лимит оценок <input id="voteLimit" type="number" min="0"></label>
+            <label>Базовая оценка <input id="baseVote" type="number" min="0" step="0.5"></label>
+            <label>Максимальная оценка <input id="maxVote" type="number" min="1" step="0.5"></label>
+            <label>Лимит максимумов <input id="limitMaxVote" type="number" min="0"></label>
+            <label class="check"><input id="hostKnowsAuthors" type="checkbox"> Ведущий знает авторов</label>
+            <label class="check"><input id="limitMaxVoteByTopic" type="checkbox"> Лимит максимумов по темам</label>
+            <label class="check"><input id="oneMaxVotePerTopic" type="checkbox"> Одна максимальная в теме</label>
+            <label class="check"><input id="downgradeExtraMaxVote" type="checkbox"> Лишние максимумы снижать до базы</label>
+            <label class="check"><input id="allowZeroVotes" type="checkbox"> Разрешить нулевые оценки</label>
+            <label class="check"><input id="selfVoteZero" type="checkbox"> Самоголосование = 0</label>
+          </div>
+          <div class="panel">
+            <h2>Работы</h2>
+            <textarea id="worksText" class="small-textarea" spellcheck="false" placeholder="01 - Название - Автор&#10;02 - Другое название - Автор"></textarea>
+            <table>
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th>Название</th>
+                  <th>Автор</th>
+                  <th>Тема</th>
+                </tr>
+              </thead>
+              <tbody id="workRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-control" class="view">
+        <div class="section-head">
+          <h1>Контроль голосования</h1>
+          <div class="actions">
+            <button id="exportControlCsvBtn">CSV</button>
+          </div>
+        </div>
+        <div class="panel">
+          <table>
+            <thead>
+              <tr>
+                <th>Судья</th>
+                <th>Статус</th>
+                <th>Оценок</th>
+                <th>Пропуски</th>
+                <th>Неизвестные</th>
+              </tr>
+            </thead>
+            <tbody id="controlRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="view-results" class="view">
+        <div class="section-head">
+          <h1>Итоги</h1>
+          <div class="actions">
+            <button id="copyFinalBtn">Копировать</button>
+            <button id="downloadFinalBtn">HTML</button>
+            <button id="exportRatingCsvBtn">CSV</button>
+          </div>
+        </div>
+        <div class="split">
+          <div class="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Место</th>
+                  <th>№</th>
+                  <th>Название</th>
+                  <th>Автор</th>
+                  <th>Баллы</th>
+                  <th>Голосов</th>
+                  <th>Средняя</th>
+                </tr>
+              </thead>
+              <tbody id="resultRows"></tbody>
+            </table>
+          </div>
+          <textarea id="finalText" spellcheck="false"></textarea>
+        </div>
+      </section>
+
+      <section id="view-changes" class="view">
+        <div class="section-head">
+          <h1>Правки правил</h1>
+        </div>
+        <div class="panel">
+          <table>
+            <thead>
+              <tr>
+                <th>Голосующий</th>
+                <th>Работа</th>
+                <th>Было</th>
+                <th>Стало</th>
+                <th>Причина</th>
+              </tr>
+            </thead>
+            <tbody id="changeRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="view-people" class="view">
+        <div class="section-head">
+          <h1>Участники</h1>
+          <div class="actions">
+            <button id="exportPeopleCsvBtn">CSV</button>
+          </div>
+        </div>
+        <div class="panel">
+          <table>
+            <thead>
+              <tr>
+                <th>Имя</th>
+                <th>Автор работ</th>
+                <th>Голосующий</th>
+                <th>Работы</th>
+                <th>Оценок</th>
+              </tr>
+            </thead>
+            <tbody id="peopleRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>
