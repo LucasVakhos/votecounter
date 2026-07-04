@@ -137,10 +137,16 @@ public sealed class LocalStore
         using var connection = LocalDatabase.OpenConnection();
         string templatePath = LoadSetting(connection, nameof(AppSettings.TemplatePath));
         string outputFolder = LoadSetting(connection, nameof(AppSettings.OutputFolder));
+        string voteDraftContestId = LoadSetting(connection, nameof(AppSettings.VoteDraftContestId));
+        string voteDraftText = LoadSetting(connection, nameof(AppSettings.VoteDraftText));
+        string voteDraftUpdatedAtText = LoadSetting(connection, nameof(AppSettings.VoteDraftUpdatedAt));
         return new AppSettings
         {
             TemplatePath = templatePath,
-            OutputFolder = outputFolder
+            OutputFolder = outputFolder,
+            VoteDraftContestId = voteDraftContestId,
+            VoteDraftText = voteDraftText,
+            VoteDraftUpdatedAt = DateTime.TryParse(voteDraftUpdatedAtText, out DateTime voteDraftUpdatedAt) ? voteDraftUpdatedAt : null
         };
     }
 
@@ -299,4 +305,7 @@ public sealed class AppSettings
 {
     public string TemplatePath { get; set; } = string.Empty;
     public string OutputFolder { get; set; } = string.Empty;
+    public string VoteDraftContestId { get; set; } = string.Empty;
+    public string VoteDraftText { get; set; } = string.Empty;
+    public DateTime? VoteDraftUpdatedAt { get; set; }
 }

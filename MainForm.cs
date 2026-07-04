@@ -1513,6 +1513,15 @@ public sealed class MainForm : RibbonForm
         var btnPreviewReport = new Button { Text = "Авточек правил", Width = 150, Height = 34 };
         btnPreviewReport.Click += (_, _) => SaveVotePreviewReport(openFolder: true);
 
+        var btnSaveDraft = new Button { Text = "Сохранить черновик", Width = 175, Height = 34 };
+        btnSaveDraft.Click += (_, _) => SaveVoteDraft();
+
+        var btnLoadDraft = new Button { Text = "Загрузить черновик", Width = 175, Height = 34 };
+        btnLoadDraft.Click += (_, _) => LoadVoteDraft();
+
+        var btnClearDraft = new Button { Text = "Очистить черновик", Width = 165, Height = 34 };
+        btnClearDraft.Click += (_, _) => ClearVoteDraft();
+
         var btnGenerate = new Button { Text = "Сформировать Excel и открыть", Width = 230, Height = 34 };
         btnGenerate.Click += (_, _) => GenerateExcel();
 
@@ -1525,7 +1534,7 @@ public sealed class MainForm : RibbonForm
         var btnRmDb = new Button { Text = "Открыть базу проекта", Width = 180, Height = 34 };
         btnRmDb.Click += (_, _) => OpenRhymeMachineDatabase();
 
-        panel.Controls.AddRange(new Control[] { btnPreview, btnImport, btnPreviewReport, btnGenerate, btnLoad, btnClear, btnRmDb });
+        panel.Controls.AddRange(new Control[] { btnPreview, btnImport, btnPreviewReport, btnSaveDraft, btnLoadDraft, btnClearDraft, btnGenerate, btnLoad, btnClear, btnRmDb });
         return panel;
     }
 
@@ -4004,6 +4013,95 @@ public sealed class MainForm : RibbonForm
         Log(BuildImportSummary("Распознано", result));
         foreach (var warning in result.Warnings)
             Log("⚠ " + warning);
+    }
+
+    private void SaveVoteDraft()
+    {
+        Contest? contest = CurrentContest;
+        if (contest is null)
+        {
+            MessageBox.Show(this, "Сначала выбери конкурс.", "Черновик голосования", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        string text = txtVotes.Text ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            MessageBox.Show(this, "Поле голосования пустое. Нечего сохранять в черновик.", "Черновик голосования", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        _settings.VoteDraftContestId = contest.Id;
+        _settings.VoteDraftText = text;
+        _settings.VoteDraftUpdatedAt = DateTime.Now;
+        SaveSettings();
+        Log($"Черновик голосования сохранён для конкурса №{contest.Number}: {text.Length} символов.");
+    }
+
+    private void LoadVoteDraft()
+    {
+        if (string.IsNullOrWhiteSpace(_settings.VoteDraftText))
+        {
+            MessageBox.Show(this, "Сохранённого черновика пока нет.", "Черновик голосования", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        Contest? contest = CurrentContest;
+        bool otherContest = contest is not null
+            && !string.IsNullOrWhiteSpace(_settings.VoteDraftContestId)
+            && !string.Equals(contest.Id, _settings.VoteDraftContestId, StringComparison.OrdinalIgnoreCase);
+
+        if (otherContest)
+        {
+            DialogResult answer = MessageBox.Show(
+                this,
+                "Черновик был сохранён для другого конкурса. Всё равно загрузить текст в поле голосования?",
+                "Черновик голосования",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+            if (answer != DialogResult.Yes)
+                return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(txtVotes.Text))
+        {
+            DialogResult answer = MessageBox.Show(
+                this,
+                "Текущее поле голосования не пустое. Заменить его сохранённым черновиком?",
+                "Черновик голосования",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+            if (answer != DialogResult.Yes)
+                return;
+        }
+
+        txtVotes.Text = _settings.VoteDraftText;
+        string updated = _settings.VoteDraftUpdatedAt?.ToString("dd.MM.yyyy HH:mm") ?? "дата неизвестна";
+        Log($"Черновик голосования загружен ({updated}).");
+    }
+
+    private void ClearVoteDraft()
+    {
+        if (string.IsNullOrWhiteSpace(_settings.VoteDraftText))
+        {
+            Log("Черновик голосования уже пуст.");
+            return;
+        }
+
+        DialogResult answer = MessageBox.Show(
+            this,
+            "Очистить сохранённый черновик голосования? Принятые голоса в базе не изменятся.",
+            "Черновик голосования",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question);
+        if (answer != DialogResult.Yes)
+            return;
+
+        _settings.VoteDraftContestId = string.Empty;
+        _settings.VoteDraftText = string.Empty;
+        _settings.VoteDraftUpdatedAt = null;
+        SaveSettings();
+        Log("Черновик голосования очищен.");
     }
 
     private void ImportVotes()

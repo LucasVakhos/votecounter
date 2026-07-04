@@ -451,6 +451,9 @@ internal static class LocalDatabase
         using var transaction = connection.BeginTransaction();
         UpsertSetting(connection, transaction, nameof(AppSettings.TemplatePath), settings.TemplatePath ?? string.Empty);
         UpsertSetting(connection, transaction, nameof(AppSettings.OutputFolder), settings.OutputFolder ?? string.Empty);
+        UpsertSetting(connection, transaction, nameof(AppSettings.VoteDraftContestId), settings.VoteDraftContestId ?? string.Empty);
+        UpsertSetting(connection, transaction, nameof(AppSettings.VoteDraftText), settings.VoteDraftText ?? string.Empty);
+        UpsertSetting(connection, transaction, nameof(AppSettings.VoteDraftUpdatedAt), settings.VoteDraftUpdatedAt?.ToString("O") ?? string.Empty);
         transaction.Commit();
     }
 

@@ -11,7 +11,7 @@
     <ApplicationIcon>Resources\Images\votecounter.ico</ApplicationIcon>
     <AssemblyName>VoteCounter</AssemblyName>
     <RootNamespace>VoteCounter</RootNamespace>
-    <Version>1.41.4-ribbon-icons-hints</Version>
+    <Version>1.42.1-vote-draft</Version>
 
     <!-- Fix for VS/MSBuild setups that pass the literal **/*.resx pattern into GenerateResource.
          We do not use designer resources here, so resource discovery is disabled explicitly. -->
@@ -28,6 +28,9 @@
 
   <ItemGroup>
     <!-- Рабочую базу никогда не кладём в ZIP/Output: иначе новый чекпойнт может затереть данные пользователя. -->
+    <Compile Remove="votecounter\**\*.cs" />
+    <EmbeddedResource Remove="votecounter\**\*.*" />
+    <None Remove="votecounter\**\*.*" />
     <None Remove="Database\*.db" />
     <None Remove="Database\*.db-shm" />
     <None Remove="Database\*.db-wal" />
