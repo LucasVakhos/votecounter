@@ -19,6 +19,11 @@
     }
     else
     {
+        <div class="alert @GetAnnouncementAlertClass()" role="alert">
+            <h5 class="alert-heading mb-1">Объявление о начале приёма работ</h5>
+            <div>@GetWorkReceptionAnnouncement()</div>
+        </div>
+
         <div class="card mb-3">
             <div class="card-body">
                 <h4 class="mb-1">@contest.Name</h4>
@@ -95,5 +100,31 @@
             return;
 
         NavigationManager.NavigateTo($"/submit-work/{contest.Id}");
+    }
+
+    private string GetWorkReceptionAnnouncement()
+    {
+        if (contest == null)
+            return "Прием работ будет объявлен дополнительно.";
+
+        var stage = ContestService.GetContestStage(contest);
+        return stage switch
+        {
+            ContestStage.WorkReception => "Приём работ открыт. Авторы могут подавать стихотворения через кнопку \"подать\" ниже.",
+            ContestStage.TopicReception => "Конкурс в стадии приёма тем. После старта стадии приёма работ здесь появится активное объявление.",
+            ContestStage.VotingOpen => "Приём работ завершён. Сейчас открыто голосование.",
+            ContestStage.VotingClosed => "Приём работ завершён. Идёт подведение итогов.",
+            ContestStage.Finished => "Конкурс завершён. Приём работ закрыт.",
+            _ => "Статус конкурса обновляется."
+        };
+    }
+
+    private string GetAnnouncementAlertClass()
+    {
+        if (contest == null)
+            return "alert-secondary";
+
+        var stage = ContestService.GetContestStage(contest);
+        return stage == ContestStage.WorkReception ? "alert-success" : "alert-warning";
     }
 }
