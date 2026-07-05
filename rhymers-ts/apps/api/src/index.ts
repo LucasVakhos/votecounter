@@ -1,5 +1,8 @@
 import cors from "cors";
 import express from "express";
+import Database from "better-sqlite3";
+import fs from "node:fs";
+import path from "node:path";
 import type {
   AddCommentRequest,
   AddReviewRequest,
@@ -21,15 +24,228 @@ import type {
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
+const dataDir = path.resolve(process.cwd(), "data");
+const dbFile = path.join(dataDir, "rhymers.db");
 
 app.use(cors());
 app.use(express.json());
 
-const sorrowMessages: ContestSorrowMessage[] = [];
-const contests: Contest[] = [];
-const votesByContest = new Map<string, VoteEntry[]>();
-const commentsByContest = new Map<string, ContestComment[]>();
-const reviewsByContestWork = new Map<string, WorkReview[]>();
+fs.mkdirSync(dataDir, { recursive: true });
+
+const db = new Database(dbFile);
+db.pragma("journal_mode = WAL");
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS contests (
+  id TEXT PRIMARY KEY,
+  number TEXT NOT NULL,
+  name TEXT NOT NULL,
+  host_name TEXT NOT NULL,
+  started_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS contest_works (
+  id TEXT PRIMARY KEY,
+  contest_id TEXT NOT NULL,
+  number INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  author_name TEXT,
+  FOREIGN KEY(contest_id) REFERENCES contests(id)
+);
+
+CREATE TABLE IF NOT EXISTS votes (
+  id TEXT PRIMARY KEY,
+  contest_id TEXT NOT NULL,
+  voter_name TEXT NOT NULL,
+  work_number INTEGER NOT NULL,
+  points INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS contest_comments (
+  id TEXT PRIMARY KEY,
+  contest_id TEXT NOT NULL,
+  author_name TEXT NOT NULL,
+  author_role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  parent_comment_id TEXT,
+  likes_count INTEGER NOT NULL,
+  is_approved INTEGER NOT NULL,
+  is_hidden INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS work_reviews (
+  id TEXT PRIMARY KEY,
+  contest_id TEXT NOT NULL,
+  work_number INTEGER NOT NULL,
+  work_title TEXT NOT NULL,
+  reviewer_name TEXT NOT NULL,
+  reviewer_role TEXT NOT NULL,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  rating INTEGER,
+  strengths TEXT,
+  areas_for_improvement TEXT,
+  author_response TEXT,
+  helpful_count INTEGER NOT NULL,
+  is_approved INTEGER NOT NULL,
+  is_hidden INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sorrow_messages (
+  id TEXT PRIMARY KEY,
+  contest_id TEXT NOT NULL,
+  author_name TEXT NOT NULL,
+  content TEXT NOT NULL,
+  type TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  empathy_count INTEGER NOT NULL
+);
+`);
+
+type ContestRow = {
+  id: string;
+  number: string;
+  name: string;
+  host_name: string;
+  started_at: string;
+};
+
+type ContestWorkRow = {
+  id: string;
+  contest_id: string;
+  number: number;
+  title: string;
+  author_name: string | null;
+};
+
+type VoteRow = {
+  id: string;
+  contest_id: string;
+  voter_name: string;
+  work_number: number;
+  points: number;
+};
+
+type CommentRow = {
+  id: string;
+  contest_id: string;
+  author_name: string;
+  author_role: UserRole;
+  content: string;
+  parent_comment_id: string | null;
+  likes_count: number;
+  is_approved: 0 | 1;
+  is_hidden: 0 | 1;
+  created_at: string;
+};
+
+type ReviewRow = {
+  id: string;
+  contest_id: string;
+  work_number: number;
+  work_title: string;
+  reviewer_name: string;
+  reviewer_role: UserRole;
+  title: string;
+  content: string;
+  rating: number | null;
+  strengths: string | null;
+  areas_for_improvement: string | null;
+  author_response: string | null;
+  helpful_count: number;
+  is_approved: 0 | 1;
+  is_hidden: 0 | 1;
+  created_at: string;
+};
+
+type SorrowRow = {
+  id: string;
+  contest_id: string;
+  author_name: string;
+  content: string;
+  type: ContestSorrowMessage["type"];
+  created_at: string;
+  empathy_count: number;
+};
+
+function mapContest(row: ContestRow, works: ContestWork[]): Contest {
+  return {
+    id: row.id,
+    number: row.number,
+    name: row.name,
+    hostName: row.host_name,
+    startedAt: row.started_at,
+    works
+  };
+}
+
+function mapWork(row: ContestWorkRow): ContestWork {
+  return {
+    number: row.number,
+    title: row.title,
+    authorName: row.author_name ?? undefined
+  };
+}
+
+function mapVote(row: VoteRow): VoteEntry {
+  return {
+    id: row.id,
+    contestId: row.contest_id,
+    voterName: row.voter_name,
+    workNumber: row.work_number,
+    points: row.points
+  };
+}
+
+function mapComment(row: CommentRow): ContestComment {
+  return {
+    id: row.id,
+    contestId: row.contest_id,
+    authorName: row.author_name,
+    authorRole: row.author_role,
+    content: row.content,
+    parentCommentId: row.parent_comment_id ?? undefined,
+    likesCount: row.likes_count,
+    isApproved: row.is_approved === 1,
+    isHidden: row.is_hidden === 1,
+    createdAt: row.created_at
+  };
+}
+
+function mapReview(row: ReviewRow): WorkReview {
+  return {
+    id: row.id,
+    contestId: row.contest_id,
+    workNumber: row.work_number,
+    workTitle: row.work_title,
+    reviewerName: row.reviewer_name,
+    reviewerRole: row.reviewer_role,
+    title: row.title,
+    content: row.content,
+    rating: row.rating ?? undefined,
+    strengths: row.strengths ?? undefined,
+    areasForImprovement: row.areas_for_improvement ?? undefined,
+    authorResponse: row.author_response ?? undefined,
+    helpfulCount: row.helpful_count,
+    isApproved: row.is_approved === 1,
+    isHidden: row.is_hidden === 1,
+    createdAt: row.created_at
+  };
+}
+
+function mapSorrow(row: SorrowRow): ContestSorrowMessage {
+  return {
+    id: row.id,
+    contestId: row.contest_id,
+    authorName: row.author_name,
+    content: row.content,
+    type: row.type,
+    createdAt: row.created_at,
+    empathyCount: row.empathy_count
+  };
+}
 
 function getCurrentUser(req: express.Request): User | null {
   const userName = req.header("X-User-Name")?.trim();
@@ -63,10 +279,6 @@ function requireRole(user: User | null, minRole: UserRole): boolean {
   };
 
   return rank[user.role] >= rank[minRole];
-}
-
-function workKey(contestId: string, workNumber: number): string {
-  return `${contestId}:${workNumber}`;
 }
 
 function parseVoteText(contestId: string, voteText: string): ImportResult {
@@ -112,15 +324,36 @@ function parseVoteText(contestId: string, voteText: string): ImportResult {
 // ===== Contests =====
 
 app.get("/api/contests", (_req, res) => {
-  res.json(contests);
+  const contestRows = db.prepare("SELECT id, number, name, host_name, started_at FROM contests ORDER BY started_at DESC").all() as ContestRow[];
+  const workRows = db.prepare("SELECT id, contest_id, number, title, author_name FROM contest_works").all() as ContestWorkRow[];
+  const worksByContest = new Map<string, ContestWork[]>();
+
+  for (const work of workRows) {
+    const current = worksByContest.get(work.contest_id) ?? [];
+    current.push(mapWork(work));
+    worksByContest.set(work.contest_id, current);
+  }
+
+  res.json(contestRows.map((row) => mapContest(row, worksByContest.get(row.id) ?? [])));
 });
 
 app.get("/api/contests/:id", (req, res) => {
-  const contest = contests.find((x) => x.id === req.params.id);
-  if (!contest) {
+  const contestRow = db
+    .prepare("SELECT id, number, name, host_name, started_at FROM contests WHERE id = ?")
+    .get(req.params.id) as ContestRow | undefined;
+
+  if (!contestRow) {
     res.status(404).json({ error: `Contest with ID ${req.params.id} not found` });
     return;
   }
+
+  const works = (
+    db
+      .prepare("SELECT id, contest_id, number, title, author_name FROM contest_works WHERE contest_id = ? ORDER BY number ASC")
+      .all(req.params.id) as ContestWorkRow[]
+  ).map(mapWork);
+
+  const contest = mapContest(contestRow, works);
   res.json(contest);
 });
 
@@ -133,38 +366,61 @@ app.post("/api/contests", (req, res) => {
 
   const contest: Contest = {
     id: crypto.randomUUID().replaceAll("-", ""),
-    number: String(contests.length + 1).padStart(3, "0"),
+    number: String((db.prepare("SELECT COUNT(1) AS count FROM contests").get() as { count: number }).count + 1).padStart(3, "0"),
     name: body.name.trim(),
     hostName: body.hostName?.trim() || "Unknown",
     startedAt: new Date().toISOString(),
     works: []
   };
 
-  contests.push(contest);
+  db.prepare("INSERT INTO contests(id, number, name, host_name, started_at) VALUES (?, ?, ?, ?, ?)").run(
+    contest.id,
+    contest.number,
+    contest.name,
+    contest.hostName,
+    contest.startedAt
+  );
+
   res.status(201).json(contest);
 });
 
 app.put("/api/contests/:id", (req, res) => {
-  const contest = contests.find((x) => x.id === req.params.id);
-  if (!contest) {
+  const contestRow = db
+    .prepare("SELECT id, number, name, host_name, started_at FROM contests WHERE id = ?")
+    .get(req.params.id) as ContestRow | undefined;
+
+  if (!contestRow) {
     res.status(404).json({ error: `Contest with ID ${req.params.id} not found` });
     return;
   }
 
   const body = req.body as UpdateContestRequest;
-  if (body.name?.trim()) {
-    contest.name = body.name.trim();
-  }
-  if (body.hostName?.trim()) {
-    contest.hostName = body.hostName.trim();
-  }
+  const newName = body.name?.trim() || contestRow.name;
+  const newHost = body.hostName?.trim() || contestRow.host_name;
 
-  res.json(contest);
+  db.prepare("UPDATE contests SET name = ?, host_name = ? WHERE id = ?").run(newName, newHost, req.params.id);
+
+  const works = (
+    db
+      .prepare("SELECT id, contest_id, number, title, author_name FROM contest_works WHERE contest_id = ? ORDER BY number ASC")
+      .all(req.params.id) as ContestWorkRow[]
+  ).map(mapWork);
+
+  res.json(
+    mapContest(
+      {
+        ...contestRow,
+        name: newName,
+        host_name: newHost
+      },
+      works
+    )
+  );
 });
 
 app.post("/api/contests/:id/works", (req, res) => {
-  const contest = contests.find((x) => x.id === req.params.id);
-  if (!contest) {
+  const contestExists = db.prepare("SELECT 1 as value FROM contests WHERE id = ?").get(req.params.id) as { value: number } | undefined;
+  if (!contestExists) {
     res.status(404).json({ error: `Contest with ID ${req.params.id} not found` });
     return;
   }
@@ -175,23 +431,40 @@ app.post("/api/contests/:id/works", (req, res) => {
     return;
   }
 
-  contest.works.push({
-    number: work.number,
-    title: work.title.trim(),
-    authorName: work.authorName?.trim()
-  });
+  db.prepare("INSERT INTO contest_works(id, contest_id, number, title, author_name) VALUES (?, ?, ?, ?, ?)").run(
+    crypto.randomUUID(),
+    req.params.id,
+    work.number,
+    work.title.trim(),
+    work.authorName?.trim() ?? null
+  );
 
-  res.json(contest);
+  const contestRow = db
+    .prepare("SELECT id, number, name, host_name, started_at FROM contests WHERE id = ?")
+    .get(req.params.id) as ContestRow;
+  const works = (
+    db
+      .prepare("SELECT id, contest_id, number, title, author_name FROM contest_works WHERE contest_id = ? ORDER BY number ASC")
+      .all(req.params.id) as ContestWorkRow[]
+  ).map(mapWork);
+
+  res.json(mapContest(contestRow, works));
 });
 
 app.get("/api/contests/:id/works", (req, res) => {
-  const contest = contests.find((x) => x.id === req.params.id);
-  if (!contest) {
+  const contestExists = db.prepare("SELECT 1 as value FROM contests WHERE id = ?").get(req.params.id) as { value: number } | undefined;
+  if (!contestExists) {
     res.status(404).json({ error: `Contest with ID ${req.params.id} not found` });
     return;
   }
 
-  res.json(contest.works);
+  const works = (
+    db
+      .prepare("SELECT id, contest_id, number, title, author_name FROM contest_works WHERE contest_id = ? ORDER BY number ASC")
+      .all(req.params.id) as ContestWorkRow[]
+  ).map(mapWork);
+
+  res.json(works);
 });
 
 // ===== Votes =====
@@ -224,8 +497,11 @@ app.post("/api/votes/import", (req, res) => {
     }
   }
 
-  const existing = votesByContest.get(contestId) ?? [];
-  votesByContest.set(contestId, existing.concat(imported));
+  const insertVote = db.prepare("INSERT INTO votes(id, contest_id, voter_name, work_number, points) VALUES (?, ?, ?, ?, ?)");
+  for (const vote of imported) {
+    insertVote.run(vote.id, vote.contestId, vote.voterName, vote.workNumber, vote.points);
+  }
+
   res.json(parsed);
 });
 
@@ -255,7 +531,11 @@ app.post("/api/votes/validate", (req, res) => {
 });
 
 app.get("/api/votes/contest/:contestId", (req, res) => {
-  res.json(votesByContest.get(req.params.contestId) ?? []);
+  const rows = db
+    .prepare("SELECT id, contest_id, voter_name, work_number, points FROM votes WHERE contest_id = ?")
+    .all(req.params.contestId) as VoteRow[];
+
+  res.json(rows.map(mapVote));
 });
 
 app.post("/api/votes/results", (req, res) => {
@@ -265,7 +545,9 @@ app.post("/api/votes/results", (req, res) => {
     return;
   }
 
-  const votes = votesByContest.get(contestId) ?? [];
+  const votes = (
+    db.prepare("SELECT id, contest_id, voter_name, work_number, points FROM votes WHERE contest_id = ?").all(contestId) as VoteRow[]
+  ).map(mapVote);
   const byWork = new Map<number, number>();
   for (const vote of votes) {
     byWork.set(vote.workNumber, (byWork.get(vote.workNumber) ?? 0) + vote.points);
@@ -285,7 +567,14 @@ app.post("/api/votes/results", (req, res) => {
 // ===== Discussions =====
 
 app.get("/api/discussions/contests/:contestId/comments", (req, res) => {
-  res.json(commentsByContest.get(req.params.contestId) ?? []);
+  const comments = (
+    db
+      .prepare(
+        "SELECT id, contest_id, author_name, author_role, content, parent_comment_id, likes_count, is_approved, is_hidden, created_at FROM contest_comments WHERE contest_id = ? ORDER BY created_at DESC"
+      )
+      .all(req.params.contestId) as CommentRow[]
+  ).map(mapComment);
+  res.json(comments);
 });
 
 app.post("/api/discussions/contests/:contestId/comments", (req, res) => {
@@ -302,7 +591,6 @@ app.post("/api/discussions/contests/:contestId/comments", (req, res) => {
   }
 
   const contestId = req.params.contestId;
-  const comments = commentsByContest.get(contestId) ?? [];
   const comment: ContestComment = {
     id: crypto.randomUUID(),
     contestId,
@@ -316,20 +604,29 @@ app.post("/api/discussions/contests/:contestId/comments", (req, res) => {
     createdAt: new Date().toISOString()
   };
 
-  comments.unshift(comment);
-  commentsByContest.set(contestId, comments);
+  db.prepare(
+    "INSERT INTO contest_comments(id, contest_id, author_name, author_role, content, parent_comment_id, likes_count, is_approved, is_hidden, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(
+    comment.id,
+    comment.contestId,
+    comment.authorName,
+    comment.authorRole,
+    comment.content,
+    comment.parentCommentId ?? null,
+    comment.likesCount,
+    comment.isApproved ? 1 : 0,
+    comment.isHidden ? 1 : 0,
+    comment.createdAt
+  );
+
   res.status(201).json(comment);
 });
 
 app.post("/api/discussions/comments/:commentId/like", (req, res) => {
-  const commentId = req.params.commentId;
-  for (const comments of commentsByContest.values()) {
-    const comment = comments.find((x) => x.id === commentId);
-    if (comment) {
-      comment.likesCount += 1;
-      res.json({ ok: true });
-      return;
-    }
+  const result = db.prepare("UPDATE contest_comments SET likes_count = likes_count + 1 WHERE id = ?").run(req.params.commentId);
+  if (result.changes > 0) {
+    res.json({ ok: true });
+    return;
   }
   res.status(404).json({ error: "Comment not found" });
 });
@@ -341,15 +638,10 @@ app.post("/api/discussions/comments/:commentId/approve", (req, res) => {
     return;
   }
 
-  const commentId = req.params.commentId;
-  for (const comments of commentsByContest.values()) {
-    const comment = comments.find((x) => x.id === commentId);
-    if (comment) {
-      comment.isApproved = true;
-      comment.isHidden = false;
-      res.json({ ok: true });
-      return;
-    }
+  const result = db.prepare("UPDATE contest_comments SET is_approved = 1, is_hidden = 0 WHERE id = ?").run(req.params.commentId);
+  if (result.changes > 0) {
+    res.json({ ok: true });
+    return;
   }
   res.status(404).json({ error: "Comment not found" });
 });
@@ -361,14 +653,10 @@ app.post("/api/discussions/comments/:commentId/hide", (req, res) => {
     return;
   }
 
-  const commentId = req.params.commentId;
-  for (const comments of commentsByContest.values()) {
-    const comment = comments.find((x) => x.id === commentId);
-    if (comment) {
-      comment.isHidden = true;
-      res.json({ ok: true });
-      return;
-    }
+  const result = db.prepare("UPDATE contest_comments SET is_hidden = 1 WHERE id = ?").run(req.params.commentId);
+  if (result.changes > 0) {
+    res.json({ ok: true });
+    return;
   }
   res.status(404).json({ error: "Comment not found" });
 });
@@ -376,7 +664,15 @@ app.post("/api/discussions/comments/:commentId/hide", (req, res) => {
 app.get("/api/discussions/contests/:contestId/works/:workNumber/reviews", (req, res) => {
   const contestId = req.params.contestId;
   const workNumber = Number.parseInt(req.params.workNumber, 10);
-  res.json(reviewsByContestWork.get(workKey(contestId, workNumber)) ?? []);
+  const reviews = (
+    db
+      .prepare(
+        "SELECT id, contest_id, work_number, work_title, reviewer_name, reviewer_role, title, content, rating, strengths, areas_for_improvement, author_response, helpful_count, is_approved, is_hidden, created_at FROM work_reviews WHERE contest_id = ? AND work_number = ? ORDER BY created_at DESC"
+      )
+      .all(contestId, workNumber) as ReviewRow[]
+  ).map(mapReview);
+
+  res.json(reviews);
 });
 
 app.post("/api/discussions/contests/:contestId/works/:workNumber/reviews", (req, res) => {
@@ -398,9 +694,6 @@ app.post("/api/discussions/contests/:contestId/works/:workNumber/reviews", (req,
 
   const contestId = req.params.contestId;
   const workNumber = Number.parseInt(req.params.workNumber, 10);
-  const key = workKey(contestId, workNumber);
-  const reviews = reviewsByContestWork.get(key) ?? [];
-
   const review: WorkReview = {
     id: crypto.randomUUID(),
     contestId,
@@ -420,15 +713,40 @@ app.post("/api/discussions/contests/:contestId/works/:workNumber/reviews", (req,
     createdAt: new Date().toISOString()
   };
 
-  reviews.unshift(review);
-  reviewsByContestWork.set(key, reviews);
+  db.prepare(
+    "INSERT INTO work_reviews(id, contest_id, work_number, work_title, reviewer_name, reviewer_role, title, content, rating, strengths, areas_for_improvement, author_response, helpful_count, is_approved, is_hidden, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(
+    review.id,
+    review.contestId,
+    review.workNumber,
+    review.workTitle,
+    review.reviewerName,
+    review.reviewerRole,
+    review.title,
+    review.content,
+    review.rating ?? null,
+    review.strengths ?? null,
+    review.areasForImprovement ?? null,
+    review.authorResponse ?? null,
+    review.helpfulCount,
+    review.isApproved ? 1 : 0,
+    review.isHidden ? 1 : 0,
+    review.createdAt
+  );
+
   res.status(201).json(review);
 });
 
 app.get("/api/discussions/contests/:contestId/works/:workNumber/review-stats", (req, res) => {
   const contestId = req.params.contestId;
   const workNumber = Number.parseInt(req.params.workNumber, 10);
-  const reviews = reviewsByContestWork.get(workKey(contestId, workNumber)) ?? [];
+  const reviews = (
+    db
+      .prepare(
+        "SELECT id, contest_id, work_number, work_title, reviewer_name, reviewer_role, title, content, rating, strengths, areas_for_improvement, author_response, helpful_count, is_approved, is_hidden, created_at FROM work_reviews WHERE contest_id = ? AND work_number = ?"
+      )
+      .all(contestId, workNumber) as ReviewRow[]
+  ).map(mapReview);
   const ratings = reviews.map((x) => x.rating).filter((x): x is number => typeof x === "number");
 
   const stats: ReviewStatsResponse = {
@@ -441,14 +759,10 @@ app.get("/api/discussions/contests/:contestId/works/:workNumber/review-stats", (
 });
 
 app.post("/api/discussions/reviews/:reviewId/helpful", (req, res) => {
-  const reviewId = req.params.reviewId;
-  for (const reviews of reviewsByContestWork.values()) {
-    const review = reviews.find((x) => x.id === reviewId);
-    if (review) {
-      review.helpfulCount += 1;
-      res.json({ ok: true });
-      return;
-    }
+  const result = db.prepare("UPDATE work_reviews SET helpful_count = helpful_count + 1 WHERE id = ?").run(req.params.reviewId);
+  if (result.changes > 0) {
+    res.json({ ok: true });
+    return;
   }
   res.status(404).json({ error: "Review not found" });
 });
@@ -460,15 +774,10 @@ app.post("/api/discussions/reviews/:reviewId/approve", (req, res) => {
     return;
   }
 
-  const reviewId = req.params.reviewId;
-  for (const reviews of reviewsByContestWork.values()) {
-    const review = reviews.find((x) => x.id === reviewId);
-    if (review) {
-      review.isApproved = true;
-      review.isHidden = false;
-      res.json({ ok: true });
-      return;
-    }
+  const result = db.prepare("UPDATE work_reviews SET is_approved = 1, is_hidden = 0 WHERE id = ?").run(req.params.reviewId);
+  if (result.changes > 0) {
+    res.json({ ok: true });
+    return;
   }
   res.status(404).json({ error: "Review not found" });
 });
@@ -480,14 +789,10 @@ app.post("/api/discussions/reviews/:reviewId/hide", (req, res) => {
     return;
   }
 
-  const reviewId = req.params.reviewId;
-  for (const reviews of reviewsByContestWork.values()) {
-    const review = reviews.find((x) => x.id === reviewId);
-    if (review) {
-      review.isHidden = true;
-      res.json({ ok: true });
-      return;
-    }
+  const result = db.prepare("UPDATE work_reviews SET is_hidden = 1 WHERE id = ?").run(req.params.reviewId);
+  if (result.changes > 0) {
+    res.json({ ok: true });
+    return;
   }
   res.status(404).json({ error: "Review not found" });
 });
@@ -505,25 +810,27 @@ app.post("/api/discussions/reviews/:reviewId/author-response", (req, res) => {
     return;
   }
 
-  const reviewId = req.params.reviewId;
-  for (const reviews of reviewsByContestWork.values()) {
-    const review = reviews.find((x) => x.id === reviewId);
-    if (review) {
-      review.authorResponse = responseText;
-      res.json({ ok: true });
-      return;
-    }
+  const result = db.prepare("UPDATE work_reviews SET author_response = ? WHERE id = ?").run(responseText, req.params.reviewId);
+  if (result.changes > 0) {
+    res.json({ ok: true });
+    return;
   }
   res.status(404).json({ error: "Review not found" });
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "rhymers-ts-api" });
+  res.json({ ok: true, service: "rhymers-ts-api", storage: "sqlite", dbFile });
 });
 
 app.get("/api/contests/:contestId/sorrow", (req, res) => {
-  const { contestId } = req.params;
-  res.json(sorrowMessages.filter((x) => x.contestId === contestId));
+  const rows = (
+    db
+      .prepare(
+        "SELECT id, contest_id, author_name, content, type, created_at, empathy_count FROM sorrow_messages WHERE contest_id = ? ORDER BY created_at DESC"
+      )
+      .all(req.params.contestId) as SorrowRow[]
+  ).map(mapSorrow);
+  res.json(rows);
 });
 
 app.post("/api/contests/:contestId/sorrow", (req, res) => {
@@ -545,7 +852,10 @@ app.post("/api/contests/:contestId/sorrow", (req, res) => {
     empathyCount: 0
   };
 
-  sorrowMessages.unshift(message);
+  db.prepare(
+    "INSERT INTO sorrow_messages(id, contest_id, author_name, content, type, created_at, empathy_count) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(message.id, message.contestId, message.authorName, message.content, message.type, message.createdAt, message.empathyCount);
+
   res.status(201).json(message);
 });
 
