@@ -1,0 +1,321 @@
+@page "/friends"
+@using Rhymers.Core.Models
+@using Rhymers.Web.Services
+@inject AuthorizationWebService AuthService
+@inject FriendshipWebService FriendshipService
+@inject IJSRuntime JS
+
+<PageTitle>Друзья</PageTitle>
+
+<div class="container-fluid mt-4">
+    <!-- Поиск пользователя -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">🔍 Найти друга</h5>
+        </div>
+        <div class="card-body">
+            <div class="input-group">
+                <input type="text" class="form-control" placeholder="Введите имя пользователя..." 
+                       @bind="searchUsername" @onkeyup="HandleSearchKeyPress" />
+                <button class="btn btn-primary" @onclick="SearchUser">Поиск</button>
+            </div>
+            @if (searchResult != null)
+            {
+                <div class="mt-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6>@searchResult.DisplayName</h6>
+                                    <small class="text-muted">@searchResult.Username</small>
+                                </div>
+                                <button class="btn btn-sm btn-success" @onclick="() => SendInvitation(searchResult.Id)">
+                                    ➕ Добавить в друзья
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(searchError))
+            {
+                <div class="alert alert-warning mt-3">@searchError</div>
+            }
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Входящие приглашения -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">📥 Входящие приглашения (@incomingInvitationCount)</h5>
+                </div>
+                <div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
+                    @if (incomingInvitations == null)
+                    {
+                        <div class="p-3 text-center text-muted">
+                            <div class="spinner-border" role="status"></div>
+                        </div>
+                    }
+                    else if (!incomingInvitations.Any())
+                    {
+                        <div class="p-3 text-center text-muted">
+                            <p>Нет входящих приглашений</p>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var (sender, invitation) in incomingInvitations)
+                        {
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <div>
+                                        <strong>@sender.DisplayName</strong>
+                                        @if (!string.IsNullOrEmpty(invitation.Message))
+                                        {
+                                            <p class="small text-muted mb-0">@invitation.Message</p>
+                                        }
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-success me-2" @onclick="() => AcceptInvitation(invitation.Id)">
+                                    ✓ Принять
+                                </button>
+                                <button class="btn btn-sm btn-secondary" @onclick="() => DeclineInvitation(invitation.Id)">
+                                    ✗ Отклонить
+                                </button>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Исходящие приглашения -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">📤 Исходящие приглашения (@outgoingInvitationCount)</h5>
+                </div>
+                <div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
+                    @if (outgoingInvitations == null)
+                    {
+                        <div class="p-3 text-center text-muted">
+                            <div class="spinner-border" role="status"></div>
+                        </div>
+                    }
+                    else if (!outgoingInvitations.Any())
+                    {
+                        <div class="p-3 text-center text-muted">
+                            <p>Нет исходящих приглашений</p>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var (recipient, invitation) in outgoingInvitations)
+                        {
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>@recipient.DisplayName</strong>
+                                    <p class="small text-muted mb-0">Ожидание ответа...</p>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Мои друзья -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">👥 Мои друзья (@friendsCount)</h5>
+                </div>
+                <div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
+                    @if (friends == null)
+                    {
+                        <div class="p-3 text-center text-muted">
+                            <div class="spinner-border" role="status"></div>
+                        </div>
+                    }
+                    else if (!friends.Any())
+                    {
+                        <div class="p-3 text-center text-muted">
+                            <p>У вас нет друзей. <a href="/friends">Найдите друга →</a></p>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var (friend, _) in friends)
+                        {
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>@friend.DisplayName</strong>
+                                    <p class="small text-muted mb-0">@friend.Username</p>
+                                </div>
+                                <div class="btn-group btn-group-sm">
+                                    <a href="/direct-messages/@friend.Id" class="btn btn-info">
+                                        💬 Чат
+                                    </a>
+                                    <button class="btn btn-danger" @onclick="() => RemoveFriend(friend.Id)">
+                                        ✕ Удалить
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private User? currentUser;
+    private string? currentUserId;
+
+    private string searchUsername = string.Empty;
+    private User? searchResult;
+    private string? searchError;
+
+    private List<(User Sender, FriendshipInvitation)>? incomingInvitations;
+    private List<(User Recipient, FriendshipInvitation)>? outgoingInvitations;
+    private List<(User Friend, UserFriendship)>? friends;
+
+    private int incomingInvitationCount => incomingInvitations?.Count ?? 0;
+    private int outgoingInvitationCount => outgoingInvitations?.Count ?? 0;
+    private int friendsCount => friends?.Count ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        if (currentUser == null)
+            return;
+
+        currentUserId = currentUser.Id;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        if (currentUserId == null) return;
+
+        incomingInvitations = await FriendshipService.GetIncomingInvitationsWithDetailsAsync(currentUserId);
+        outgoingInvitations = await FriendshipService.GetOutgoingInvitationsWithDetailsAsync(currentUserId);
+        friends = await FriendshipService.GetFriendsWithDetailsAsync(currentUserId);
+        
+        StateHasChanged();
+    }
+
+    private async Task SearchUser()
+    {
+        searchResult = null;
+        searchError = null;
+
+        if (string.IsNullOrWhiteSpace(searchUsername))
+        {
+            searchError = "Введите имя пользователя";
+            return;
+        }
+
+        var user = await FriendshipService.FindUserAsync(searchUsername);
+        if (user == null)
+        {
+            searchError = "Пользователь не найден";
+        }
+        else if (currentUserId != null && user.Id == currentUserId)
+        {
+            searchError = "Это ваш профиль";
+        }
+        else if (currentUserId != null)
+        {
+            var areFriends = await FriendshipService.AreFriendsAsync(currentUserId, user.Id);
+            if (areFriends)
+            {
+                searchError = "Вы уже друзья";
+            }
+            else
+            {
+                searchResult = user;
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task HandleSearchKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SearchUser();
+        }
+    }
+
+    private async Task SendInvitation(string toUserId)
+    {
+        if (currentUserId == null) return;
+
+        try
+        {
+            await FriendshipService.SendInvitationAsync(currentUserId, toUserId);
+            await LoadData();
+            searchResult = null;
+            searchUsername = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            searchError = ex.Message;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task AcceptInvitation(string invitationId)
+    {
+        if (currentUserId == null) return;
+
+        try
+        {
+            await FriendshipService.AcceptInvitationAsync(invitationId, currentUserId);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Ошибка: {ex.Message}");
+        }
+    }
+
+    private async Task DeclineInvitation(string invitationId)
+    {
+        if (currentUserId == null) return;
+
+        try
+        {
+            await FriendshipService.DeclineInvitationAsync(invitationId, currentUserId);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Ошибка: {ex.Message}");
+        }
+    }
+
+    private async Task RemoveFriend(string friendId)
+    {
+        if (currentUserId == null) return;
+
+        if (!await JS.InvokeAsync<bool>("confirm", "Вы уверены?"))
+            return;
+
+        try
+        {
+            await FriendshipService.RemoveFriendAsync(currentUserId, friendId);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Ошибка: {ex.Message}");
+        }
+    }
+}

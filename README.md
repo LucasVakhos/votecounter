@@ -253,4 +253,148 @@ Popup-меню таблиц упрощены: главные команды ос
 ## STAGE28 - Центр правил конкурса
 
 Добавлено отдельное окно **Центр правил**: пресеты ОК-конкурса 1-4, режим без лимита 4, переключение режима авторства, лимит максимальных оценок по теме, самоголосы в 0 и пояснение применения правил. `3+` считается как `3.5`.
+
+---
+
+# STAGE29 - Friends System & Direct Messages (Rhymers.Web)
+
+Система управления друзьями, приватная переписка между пользователями и поддержка вложений (картинки, смайлики) в чатах.
+
+## Новые модели данных
+
+- **UserFriendship** - связь между двумя пользователями (Active, BlockedByUser1, BlockedByUser2, Deleted)
+- **FriendshipInvitation** - приглашение в друзья (Pending, Accepted, Declined, Cancelled)
+- **UserDirectMessage** - приватное сообщение (с поддержкой редактирования и удаления для себя)
+- **MessageAttachment** - вложения в сообщения (Image, Emoji, Document, Video, Audio)
+
+## Core Services (Rhymers.Core/Services/)
+
+### FriendshipService
+- `SendInvitationAsync()` - отправить приглашение в друзья
+- `AcceptInvitationAsync()` - принять приглашение
+- `DeclineInvitationAsync()` - отклонить приглашение
+- `GetFriendsAsync()` - получить список друзей
+- `GetIncomingInvitationsAsync()` - входящие приглашения
+- `GetOutgoingInvitationsAsync()` - исходящие приглашения
+- `RemoveFriendAsync()` - удалить из друзей
+- `BlockUserAsync()` - заблокировать пользователя
+- `AreFriendsAsync()` - проверить дружбу
+- `IsBlockedAsync()` - проверить блокировку
+
+### DirectMessageService
+- `SendMessageAsync()` - отправить сообщение (только друзьям)
+- `GetConversationAsync()` - получить диалог между двумя пользователями
+- `GetDialogsAsync()` - список диалогов пользователя
+- `GetUnreadCountAsync()` - счётчик непрочитанных
+- `MarkAsReadAsync()` - отметить прочитанным
+- `MarkConversationAsReadAsync()` - отметить весь диалог прочитанным
+- `EditMessageAsync()` - редактировать сообщение (не старше 1 часа)
+- `DeleteMessageAsync()` - удалить для себя (IsDeletedBySender/IsDeletedByRecipient)
+- `ClearConversationAsync()` - очистить диалог
+
+### AttachmentService
+- `AddAttachmentAsync()` - добавить вложение
+- `GetAttachmentsAsync()` - получить вложения сообщения
+- `GetAttachmentsByTypeAsync()` - вложения по типу
+- `DeleteAttachmentAsync()` - удалить вложение
+- `GetRecentEmojisAsync()` - популярные смайлики
+- `GetStatisticsAsync()` - статистика вложений
+
+## Web Services (Rhymers.Web/Services/)
+
+- **FriendshipWebService** - обертка для API с загрузкой деталей пользователей
+- **DirectMessageWebService** - обертка для API с DialogInfo (другой пользователь, последнее сообщение, счётчик непрочитанных)
+- **AttachmentWebService** - управление файлами, смайликами и галереей
+
+## API Controllers (Rhymers.Web/Controllers/)
+
+### FriendshipController (`/api/friendship`)
+- `GET /friends?userId=` - список друзей
+- `POST /invite` - отправить приглашение
+- `GET /invitations/incoming?userId=` - входящие
+- `GET /invitations/outgoing?userId=` - исходящие
+- `POST /invitations/{id}/accept` - принять
+- `POST /invitations/{id}/decline` - отклонить
+- `DELETE /friends/{friendId}?userId=` - удалить
+- `POST /block` - заблокировать
+- `GET /check?userId1=&userId2=` - проверить дружбу
+- `GET /find?username=` - найти пользователя
+
+### DirectMessagesController (`/api/messages`)
+- `POST /` - отправить сообщение
+- `GET /conversation?userId1=&userId2=` - диалог
+- `GET /dialogs?userId=` - список диалогов
+- `GET /unread-count?userId=` - счётчик
+- `GET /{messageId}?userId=` - одно сообщение
+- `PUT /{messageId}/read?userId=` - отметить прочитанным
+- `PUT /conversation/read-all?userId=&otherUserId=` - весь диалог
+- `PUT /{messageId}?userId=` - редактировать
+- `DELETE /{messageId}?userId=` - удалить
+- `POST /{messageId}/upload-image?messageType=` - загрузить картинку
+- `POST /{messageId}/add-emoji?messageType=` - добавить смайлик
+- `GET /{messageId}/attachments` - вложения
+- `GET /emojis` - список смайликов
+- `DELETE /conversation/clear?userId=&otherUserId=` - очистить
+
+## Razor Components (Rhymers.Web/Components/Pages/)
+
+### DirectMessages.razor (`/direct-messages`, `/direct-messages/{otherUserId}`)
+- Список диалогов с счётчиком непрочитанных
+- Чат с другом (история сообщений)
+- Форма отправки с поддержкой:
+  - Текстовых сообщений
+  - Загрузки картинок
+  - Добавления смайликов
+  - Редактирования (не старше 1 часа)
+  - Удаления для себя
+- Отображение вложений (картинок и смайликов)
+- Кнопка очистки диалога
+- Auto-scroll при появлении новых сообщений
+
+### FriendsList.razor (`/friends`)
+- **Поиск пользователя** - по имени с быстрой проверкой статуса дружбы
+- **Входящие приглашения** - с опциями принять/отклонить
+- **Исходящие приглашения** - ожидание ответа
+- **Мои друзья** - список со ссылками на чат и кнопкой удаления
+- Кнопка блокировки пользователя
+
+## Особенности
+
+✅ **Безопасность**:
+- Отправка сообщений только между друзьями
+- Проверка блокировок
+- Редактирование и удаление только своих сообщений
+
+✅ **UX**:
+- Счётчик непрочитанных сообщений
+- Last message preview в списке диалогов
+- Auto-mark-as-read при открытии диалога
+- Поддержка Enter для отправки (Shift+Enter для новой строки)
+
+✅ **Функционал**:
+- Редактирование сообщений (не старше 1 часа)
+- Удаление для себя (не удаляет для другого пользователя)
+- Очистка диалога
+- Загрузка картинок (JPEG, PNG, GIF, WebP, макс 5MB)
+- Вставка смайликов (13 стандартных: 😊, ❤️, 🔥, 👍, 👎, 😂, 😮, 😢, 😠, 👏, ⭐, 🚀, 🤔)
+
+✅ **Интеграция**:
+- Все сервисы зарегистрированы в DI (Program.cs)
+- Следует конвенциям проекта (асинхронные методы, error handling)
+- Использует существующие системы (AuthService, БД SQLite)
+- Готово для добавления SignalR real-time уведомлений
+
+## Возможные расширения (STAGE30+)
+
+- SignalR для real-time сообщений и уведомлений о приглашениях
+- Группы друзей (семья, коллеги, etc.)
+- Истории чатов с поиском
+- Видеозвонки/аудиозвонки
+- Шифрование сообщений
+- Реакции на сообщения (emoji reactions)
+- Пересылка сообщений
+- Закреп важных сообщений
+- Модерация в чатах (удаление спама модераторами)
+- Интеграция с контестами (приватные сообщения организаторам)
+
 # votecounter

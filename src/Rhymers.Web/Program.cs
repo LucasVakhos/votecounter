@@ -33,6 +33,15 @@ builder.Services.AddScoped<AuditLogWebService>();
 builder.Services.AddScoped<NotificationWebService>();
 builder.Services.AddScoped<AppealWebService>();
 builder.Services.AddScoped<OdnoklassnikiOAuthService>();
+
+// Register STAGE29 services (Friends, Direct Messages, Attachments)
+builder.Services.AddScoped<FriendshipService>();
+builder.Services.AddScoped<DirectMessageService>();
+builder.Services.AddScoped<AttachmentService>();
+builder.Services.AddScoped<FriendshipWebService>();
+builder.Services.AddScoped<DirectMessageWebService>();
+builder.Services.AddScoped<AttachmentWebService>();
+
 builder.Services.AddHttpClient<OdnoklassnikiOAuthService>();
 builder.Services.AddSession(options =>
 {

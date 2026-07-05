@@ -1,0 +1,314 @@
+@page "/direct-messages"
+@page "/direct-messages/{otherUserId}"
+@using Rhymers.Core.Models
+@using Rhymers.Web.Services
+@inject AuthorizationWebService AuthService
+@inject DirectMessageWebService DirectMessageService
+@inject FriendshipWebService FriendshipService
+@inject AttachmentWebService AttachmentService
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>Приватные сообщения</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="row" style="height: 80vh;">
+        <!-- Список диалогов -->
+        <div class="col-md-4 border-end" style="overflow-y: auto;">
+            <div class="card h-100">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">💬 Мои диалоги</h5>
+                </div>
+                <div class="list-group list-group-flush">
+                    @if (dialogs == null)
+                    {
+                        <div class="p-3 text-center text-muted">
+                            <div class="spinner-border" role="status"></div>
+                            <p>Загрузка...</p>
+                        </div>
+                    }
+                    else if (!dialogs.Any())
+                    {
+                        <div class="p-3 text-center text-muted">
+                            <p>У вас нет диалогов</p>
+                            <a href="/friends">Найти друзей →</a>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var dialog in dialogs)
+                        {
+                            var isActive = selectedOtherUserId == dialog.OtherUser.Id;
+                            <button class="list-group-item list-group-item-action @(isActive ? "active" : "")" 
+                                    @onclick="() => SelectDialog(dialog.OtherUser.Id)">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-1">@dialog.OtherUser.DisplayName</h6>
+                                        <small class="text-muted d-block text-truncate">
+                                            @(dialog.LastMessage.Content.Length > 50 ? dialog.LastMessage.Content.Substring(0, 50) + "..." : dialog.LastMessage.Content)
+                                        </small>
+                                    </div>
+                                    @if (dialog.UnreadCount > 0)
+                                    {
+                                        <span class="badge bg-danger">@dialog.UnreadCount</span>
+                                    }
+                                </div>
+                            </button>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Чат -->
+        <div class="col-md-8 d-flex flex-column" style="height: 80vh;">
+            @if (string.IsNullOrEmpty(selectedOtherUserId))
+            {
+                <div class="flex-grow-1 d-flex align-items-center justify-content-center text-muted">
+                    <div class="text-center">
+                        <p>Выберите диалог для начала переписки</p>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="card h-100 d-flex flex-column">
+                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">💬 Чат с @selectedOtherUserName</h5>
+                        <button class="btn btn-sm btn-outline-light" @onclick="ClearConversation">
+                            🗑️ Очистить
+                        </button>
+                    </div>
+
+                    <!-- Сообщения -->
+                    <div class="card-body flex-grow-1" style="overflow-y: auto;" @ref="messagesContainer">
+                        @if (messages == null)
+                        {
+                            <div class="text-center text-muted">
+                                <div class="spinner-border" role="status"></div>
+                                <p>Загрузка сообщений...</p>
+                            </div>
+                        }
+                        else if (!messages.Any())
+                        {
+                            <div class="text-center text-muted">
+                                <p>Начните переписку! 👋</p>
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var item in messages)
+                            {
+                                var isOwn = item.Message.FromUserId == currentUserId;
+                                <div class="mb-2 d-flex @(isOwn ? "justify-content-end" : "justify-content-start")">
+                                    <div class="@(isOwn ? "bg-primary text-white" : "bg-light") p-3 rounded" style="max-width: 70%;">
+                                        <div class="small mb-1">
+                                            <strong>@item.Sender.DisplayName</strong>
+                                            @if (item.Message.EditedAt != null)
+                                            {
+                                                <span class="text-muted">(отредактировано)</span>
+                                            }
+                                        </div>
+                                        <p class="mb-1">@item.Message.Content</p>
+                                        
+                                        <!-- Вложения -->
+                                        @if (messageAttachments.ContainsKey(item.Message.Id))
+                                        {
+                                            @foreach (var attachment in messageAttachments[item.Message.Id])
+                                            {
+                                                @if (attachment.Type == AttachmentType.Image)
+                                                {
+                                                    <img src="@attachment.FileUrl" alt="@attachment.AltText" style="max-width: 100%; border-radius: 8px; margin-top: 8px;">
+                                                }
+                                                else if (attachment.Type == AttachmentType.Emoji)
+                                                {
+                                                    <span style="font-size: 1.5em; margin-left: 8px;">@attachment.FileUrl</span>
+                                                }
+                                            }
+                                        }
+
+                                        <div class="small mt-1 @(isOwn ? "text-white-50" : "text-muted")">
+                                            @item.Message.CreatedAt.ToString("HH:mm")
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+
+                    <!-- Форма отправки -->
+                    <div class="card-footer bg-light">
+                        <div class="input-group">
+                            <input type="text" class="form-control" placeholder="Введите сообщение..." 
+                                   @bind="newMessageContent" @onkeyup="@HandleKeyPress" />
+                            <button class="btn btn-primary" @onclick="SendMessage" disabled="@(string.IsNullOrWhiteSpace(newMessageContent))">
+                                Отправить →
+                            </button>
+                            <button class="btn btn-secondary" @onclick="ShowEmojiPicker">
+                                😊 Смайлик
+                            </button>
+                            <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#imageUploadModal">
+                                🖼️ Картинка
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Modal для загрузки картинки -->
+<div class="modal fade" id="imageUploadModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">🖼️ Загрузить картинку</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <InputFile class="form-control" OnChange="HandleImageSelect" accept="image/*" />
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string? OtherUserId { get; set; }
+
+    private User? currentUser;
+    private string? currentUserId;
+    private List<DialogInfo>? dialogs;
+    private List<(UserDirectMessage Message, User Sender, User Recipient)>? messages;
+    private Dictionary<string, List<MessageAttachment>> messageAttachments = new();
+    private string? selectedOtherUserId;
+    private string? selectedOtherUserName;
+    private string newMessageContent = string.Empty;
+    private ElementReference messagesContainer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        if (currentUser == null)
+            return;
+
+        currentUserId = currentUser.Id;
+        await LoadDialogs();
+
+        if (!string.IsNullOrEmpty(OtherUserId))
+        {
+            selectedOtherUserId = OtherUserId;
+            await SelectDialog(OtherUserId);
+        }
+    }
+
+    private async Task LoadDialogs()
+    {
+        if (currentUserId == null) return;
+        dialogs = await DirectMessageService.GetDialogsAsync(currentUserId);
+        StateHasChanged();
+    }
+
+    private async Task SelectDialog(string otherUserId)
+    {
+        selectedOtherUserId = otherUserId;
+        var otherUser = dialogs?.FirstOrDefault(d => d.OtherUser.Id == otherUserId)?.OtherUser;
+        selectedOtherUserName = otherUser?.DisplayName ?? "Пользователь";
+
+        if (currentUserId != null)
+        {
+            messages = await DirectMessageService.GetConversationWithDetailsAsync(currentUserId, otherUserId);
+            await DirectMessageService.MarkConversationAsReadAsync(currentUserId, otherUserId);
+
+            // Загрузить вложения для каждого сообщения
+            foreach (var msg in messages ?? new())
+            {
+                if (!messageAttachments.ContainsKey(msg.Message.Id))
+                {
+                    messageAttachments[msg.Message.Id] = await AttachmentService.GetAttachmentsAsync(msg.Message.Id);
+                }
+            }
+
+            await RefreshScrollPosition();
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(newMessageContent) || currentUserId == null || selectedOtherUserId == null)
+            return;
+
+        var message = await DirectMessageService.SendMessageAsync(currentUserId, selectedOtherUserId, newMessageContent);
+        newMessageContent = string.Empty;
+
+        await SelectDialog(selectedOtherUserId);
+        await RefreshScrollPosition();
+    }
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await SendMessage();
+        }
+    }
+
+    private async Task HandleImageSelect(InputFileChangeEventArgs e)
+    {
+        if (currentUserId == null || selectedOtherUserId == null || messages == null || !messages.Any())
+            return;
+
+        var lastMessageId = messages.Last().Message.Id;
+
+        using var stream = e.File.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+        var form = new MultipartFormDataContent();
+        form.Add(new StreamContent(stream), "file", e.File.Name);
+
+        var response = await new HttpClient().PostAsync(
+            $"/api/messages/{lastMessageId}/upload-image?messageType=direct",
+            form);
+
+        if (response.IsSuccessStatusCode)
+        {
+            await SelectDialog(selectedOtherUserId);
+        }
+    }
+
+    private async Task ShowEmojiPicker()
+    {
+        // TODO: Implement emoji picker modal
+        var emojiCode = "smile"; // Example
+        if (currentUserId != null && selectedOtherUserId != null && messages != null && messages.Any())
+        {
+            var lastMessageId = messages.Last().Message.Id;
+            await AttachmentService.AddEmojiAsync(lastMessageId, emojiCode, MessageAttachmentType.DirectMessage);
+            await SelectDialog(selectedOtherUserId);
+        }
+    }
+
+    private async Task ClearConversation()
+    {
+        if (currentUserId == null || selectedOtherUserId == null)
+            return;
+
+        if (await JS.InvokeAsync<bool>("confirm", "Вы уверены? Диалог будет очищен."))
+        {
+            await DirectMessageService.ClearConversationAsync(currentUserId, selectedOtherUserId);
+            await LoadDialogs();
+            selectedOtherUserId = null;
+            messages = null;
+        }
+    }
+
+    private async Task RefreshScrollPosition()
+    {
+        await Task.Delay(100);
+        await JS.InvokeVoidAsync("eval", $"document.querySelector('.card-body').scrollTop = document.querySelector('.card-body').scrollHeight");
+    }
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        // Cleanup if needed
+    }
+}

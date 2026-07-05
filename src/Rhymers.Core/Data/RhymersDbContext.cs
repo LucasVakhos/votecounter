@@ -32,6 +32,12 @@ public sealed class RhymersDbContext : DbContext
     public DbSet<AuditLog> AuditLogs { get; set; } = null!;
     public DbSet<UserNotification> UserNotifications { get; set; } = null!;
     public DbSet<SanctionAppeal> SanctionAppeals { get; set; } = null!;
+    
+    // DbSets для системы друзей и приватных сообщений (STAGE29)
+    public DbSet<UserFriendship> UserFriendships { get; set; } = null!;
+    public DbSet<FriendshipInvitation> FriendshipInvitations { get; set; } = null!;
+    public DbSet<UserDirectMessage> DirectMessages { get; set; } = null!;
+    public DbSet<MessageAttachment> MessageAttachments { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -290,6 +296,86 @@ public sealed class RhymersDbContext : DbContext
             entity.HasIndex(m => m.CreatedAt);
             entity.HasIndex(m => m.IsApproved);
             entity.HasIndex(m => m.ParentMessageId);
+        });
+
+        // UserFriendship конфигурация (STAGE29 - система друзей)
+        modelBuilder.Entity<UserFriendship>(entity =>
+        {
+            entity.ToTable("UserFriendships");
+            entity.HasKey(f => f.Id);
+            entity.Property(f => f.Id).ValueGeneratedNever();
+            entity.Property(f => f.UserId1).HasMaxLength(256).IsRequired();
+            entity.Property(f => f.UserId2).HasMaxLength(256).IsRequired();
+            entity.Property(f => f.Status).IsRequired();
+            entity.Property(f => f.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(f => f.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(f => f.Notes).HasMaxLength(512);
+            entity.HasIndex(f => f.UserId1);
+            entity.HasIndex(f => f.UserId2);
+            entity.HasIndex(f => f.Status);
+            entity.HasIndex(f => new { f.UserId1, f.UserId2 }).IsUnique();
+        });
+
+        // FriendshipInvitation конфигурация (STAGE29 - приглашения в друзья)
+        modelBuilder.Entity<FriendshipInvitation>(entity =>
+        {
+            entity.ToTable("FriendshipInvitations");
+            entity.HasKey(i => i.Id);
+            entity.Property(i => i.Id).ValueGeneratedNever();
+            entity.Property(i => i.FromUserId).HasMaxLength(256).IsRequired();
+            entity.Property(i => i.ToUserId).HasMaxLength(256).IsRequired();
+            entity.Property(i => i.Status).IsRequired();
+            entity.Property(i => i.Message).HasMaxLength(512);
+            entity.Property(i => i.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(i => i.ProcessedAt);
+            entity.Property(i => i.ProcessedBy).HasMaxLength(256);
+            entity.HasIndex(i => i.FromUserId);
+            entity.HasIndex(i => i.ToUserId);
+            entity.HasIndex(i => i.Status);
+            entity.HasIndex(i => i.CreatedAt);
+        });
+
+        // UserDirectMessage конфигурация (STAGE29 - приватные сообщения)
+        modelBuilder.Entity<UserDirectMessage>(entity =>
+        {
+            entity.ToTable("UserDirectMessages");
+            entity.HasKey(m => m.Id);
+            entity.Property(m => m.Id).ValueGeneratedNever();
+            entity.Property(m => m.FromUserId).HasMaxLength(256).IsRequired();
+            entity.Property(m => m.ToUserId).HasMaxLength(256).IsRequired();
+            entity.Property(m => m.Content).IsRequired();
+            entity.Property(m => m.IsRead).HasDefaultValue(false);
+            entity.Property(m => m.ReadAt);
+            entity.Property(m => m.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(m => m.EditedAt);
+            entity.Property(m => m.IsDeletedBySender).HasDefaultValue(false);
+            entity.Property(m => m.IsDeletedByRecipient).HasDefaultValue(false);
+            entity.Property(m => m.ParentMessageId).HasMaxLength(256);
+            entity.HasIndex(m => m.FromUserId);
+            entity.HasIndex(m => m.ToUserId);
+            entity.HasIndex(m => m.CreatedAt);
+            entity.HasIndex(m => m.IsRead);
+            entity.HasIndex(m => new { m.FromUserId, m.ToUserId, m.CreatedAt });
+        });
+
+        // MessageAttachment конфигурация (STAGE29 - вложения в сообщения)
+        modelBuilder.Entity<MessageAttachment>(entity =>
+        {
+            entity.ToTable("MessageAttachments");
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.Id).ValueGeneratedNever();
+            entity.Property(a => a.MessageId).HasMaxLength(256).IsRequired();
+            entity.Property(a => a.MessageType).IsRequired();
+            entity.Property(a => a.Type).IsRequired();
+            entity.Property(a => a.FileUrl).IsRequired();
+            entity.Property(a => a.FileName).HasMaxLength(512);
+            entity.Property(a => a.FileSize).IsRequired();
+            entity.Property(a => a.MimeType).HasMaxLength(128);
+            entity.Property(a => a.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(a => a.AltText).HasMaxLength(512);
+            entity.HasIndex(a => a.MessageId);
+            entity.HasIndex(a => a.MessageType);
+            entity.HasIndex(a => a.CreatedAt);
         });
     }
 }
