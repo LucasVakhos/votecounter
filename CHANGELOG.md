@@ -229,6 +229,62 @@ Auto-executed on app startup via `PersistenceService.InitializeDatabaseAsync()`:
 
 ---
 
+## Phase 7: Discussions & Reviews System ✅
+**Commit: 4a954ed** — *Parallel chat for contest discussions and public work reviews*
+
+### New Features
+- **Contest Discussion Chat** — Participants can discuss contest in real-time on `/contest/{id}/discussion`
+- **Work Reviews** — Authors/experts can write detailed reviews on `/contest/{id}/work/{number}/reviews`
+- **Review Ratings** — 1-5 star ratings for work reviews
+- **Moderation System** — Auto-approve for moderators/admins, pending approval for others
+- **Helpful Voting** — Mark useful reviews as helpful (tracks helpful count)
+- **Nested Comments** — Support for reply threads in contest discussion
+- **Author Responses** — Authors can respond to work reviews
+- **Review Statistics** — Aggregate stats: total reviews, average rating, helpful count
+
+### Technical Details
+- `ContestComment` model for discussion threads
+- `WorkReview` model with rating and structured feedback
+- `DiscussionService` with 16 methods for comment/review management
+- `DiscussionsController` REST API with 12 endpoints
+- `ContestDiscussion.razor` and `WorkReviews.razor` pages
+- `CommentCard.razor` and `ReviewCard.razor` reusable components
+- Full moderation workflow with approval/hiding
+- Database indexes on ContestId, CreatedAt for performance
+
+### New Pages
+- `/contest/{contestId}/discussion` — Contest discussion chat
+- `/contest/{contestId}/work/{workNumber}/reviews` — Work reviews and feedback
+
+### API Endpoints (12 total)
+- Comments: GET, POST, approve, hide, like
+- Reviews: GET, POST, approve, hide, mark helpful, author response
+- Stats: GET review statistics
+
+### User Impact
+- 🗣️ Community engagement: discuss contests, ask questions
+- 📝 Peer reviews: detailed feedback on submitted works
+- ⭐ Recognition: helpful reviews appreciated by community
+- 🔄 Feedback loop: authors respond to constructive criticism
+
+### Test Coverage
+- All 35 existing unit tests continue passing
+- No breaking changes to existing functionality
+- Build verification successful
+
+---
+
+## Phase 8: Int ID Migration (Planned)
+**Branch: feature/int-id-migration** — *Long-term refactoring to replace Guid strings with auto-increment integers*
+
+This is a breaking architectural change planned for future implementation:
+- Convert all `string Id` properties to `int` with auto-increment
+- Requires updates to: models, DbContext, services, controllers, UI
+- Estimated effort: 8-16 hours of systematic refactoring
+- Branch created for tracking and future implementation
+
+---
+
 ## 📝 User-Facing Improvements
 
 ### For Authors
@@ -236,18 +292,30 @@ Auto-executed on app startup via `PersistenceService.InitializeDatabaseAsync()`:
 - 📸 Download achievement shelf as image for social sharing
 - 🏆 Public recognition in hall of fame
 - 📊 See stats: total wins, placements, votes
+- 💬 Discuss contests with community
+- 📝 Receive and respond to peer reviews
 
 ### For Moderators
 - ⚖️ Clearer fair voting audit with threshold filtering
 - 🎯 Auto-detection of suspicious voting patterns
 - 📤 One-button publish of winners to hall of fame
 - 🔒 Rollback safety: 2-minute grace period prevents undo
+- 📋 Moderate contest discussions and reviews
+- ✅ Approve/hide comments and reviews with one click
 
 ### For Contest Hosts
 - 🛡️ Antifraid system auto-protects contests
 - 📋 Sanctions workflow for problematic voters
 - 🎊 Professional winners ceremony with archive
 - 📈 Growing hall of fame as social proof
+- 💬 Active community discussion around contests
+- ⭐ Structured feedback system for improvement
+
+### For All Users
+- 🗣️ Discuss contest insights and questions
+- 📝 Read thoughtful reviews from peers
+- ⭐ Rate and validate helpful feedback
+- 👥 Build community around poetry/writing contests
 
 ---
 
@@ -278,6 +346,9 @@ Auto-executed on app startup via `PersistenceService.InitializeDatabaseAsync()`:
 | 4 | 19c4ab0 | Antifraid & sanctions system |
 | 5 | 7240e24 | Race-condition protection |
 | 6 | 37dafae | Hall of Fame system + UI |
+| 7 | 4cd41b5 | Prize Shelf + image export |
+| 8 | 1f634de | Release documentation (v2.0) |
+| 9 | 4a954ed | Discussions & Reviews system (Phase 8) |
 | 7 | 4cd41b5 | User prize shelf + export |
 
 **Total: 7 commits, 35 passing tests, 0 build errors**
