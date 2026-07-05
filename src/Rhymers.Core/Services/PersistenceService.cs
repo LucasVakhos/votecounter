@@ -170,6 +170,7 @@ public sealed class PersistenceService
         _context.ContestVotes.RemoveRange(_context.ContestVotes);
         _context.ContestStageTimelineEvents.RemoveRange(_context.ContestStageTimelineEvents);
         _context.UserSanctionNotifications.RemoveRange(_context.UserSanctionNotifications);
+        _context.UserSanctionDispatchAudits.RemoveRange(_context.UserSanctionDispatchAudits);
         _context.Voters.RemoveRange(_context.Voters);
 
         await _context.SaveChangesAsync();
@@ -246,10 +247,16 @@ public sealed class PersistenceService
         await EnsureColumnAsync("Contests", "VotingClosedSwitchDayOfWeek", "INTEGER NULL");
         await EnsureColumnAsync("Contests", "VotingClosedSwitchTime", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync("Contests", "RollbackWindowHours", "INTEGER NOT NULL DEFAULT 5");
+        await EnsureColumnAsync("Contests", "LastManualRollbackAt", "TEXT NULL");
         await EnsureColumnAsync("Contests", "AutoTopicAssignmentEnabled", "INTEGER NOT NULL DEFAULT 0");
         await EnsureColumnAsync("Contests", "AutoTopicAssignmentTargetCount", "INTEGER NOT NULL DEFAULT 5");
         await EnsureColumnAsync("Contests", "AutoFairVotingEnabled", "INTEGER NOT NULL DEFAULT 0");
         await EnsureColumnAsync("Contests", "AutoAdminAverageVotingOnCloseEnabled", "INTEGER NOT NULL DEFAULT 0");
+        await EnsureColumnAsync("Contests", "UnfairVotingDetectionThreshold", "REAL NOT NULL DEFAULT 1.5");
+        await EnsureColumnAsync("Contests", "UnfairVotingMinVotesForAnalysis", "INTEGER NOT NULL DEFAULT 5");
+        await EnsureColumnAsync("Contests", "UnfairVotingSelfVoteRiskWeight", "REAL NOT NULL DEFAULT 1.5");
+        await EnsureColumnAsync("Contests", "UnfairVotingExtremesRiskWeight", "REAL NOT NULL DEFAULT 1.0");
+        await EnsureColumnAsync("Contests", "UnfairVotingFavoritismRiskWeight", "REAL NOT NULL DEFAULT 1.2");
         await EnsureColumnAsync("Contests", "WinnersPraiseText", "TEXT NOT NULL DEFAULT ''");
 
         await _context.Database.ExecuteSqlRawAsync(@"
@@ -307,6 +314,20 @@ public sealed class PersistenceService
                 CreatedBy TEXT NOT NULL DEFAULT '',
                 CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 ReadAt TEXT NULL
+            );");
+
+        await _context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS UserSanctionDispatchAudits(
+                Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                ContestId TEXT NOT NULL,
+                RecipientUserId TEXT NOT NULL,
+                RecipientUsername TEXT NOT NULL,
+                Reason TEXT NOT NULL,
+                RiskScore REAL NOT NULL DEFAULT 0,
+                SentBy TEXT NOT NULL DEFAULT '',
+                TemplateText TEXT NOT NULL DEFAULT '',
+                RenderedMessage TEXT NOT NULL DEFAULT '',
+                SentAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );");
 
         await EnsureColumnAsync("ContestStageTimelineEvents", "AlarmKey", "TEXT NOT NULL DEFAULT ''");

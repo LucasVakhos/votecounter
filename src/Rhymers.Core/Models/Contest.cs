@@ -56,6 +56,9 @@ public sealed class Contest
     // Окно, в течение которого разрешён откат на предыдущую стадию.
     public int RollbackWindowHours { get; set; } = 5;
 
+    // Время последнего ручного отката для защиты от конфликтов с автоматикой.
+    public DateTime? LastManualRollbackAt { get; set; }
+
     // Автоназначение тем на стадии открытия конкурса при отсутствии администрации.
     public bool AutoTopicAssignmentEnabled { get; set; }
     public int AutoTopicAssignmentTargetCount { get; set; } = 5;
@@ -65,6 +68,17 @@ public sealed class Contest
 
     // При закрытии голосования система проставляет административные оценки по среднему баллу.
     public bool AutoAdminAverageVotingOnCloseEnabled { get; set; }
+
+    // Порог риска, начиная с которого участник считается подозрительным для автоотбора.
+    public decimal UnfairVotingDetectionThreshold { get; set; } = 1.5m;
+
+    // Минимум оценок пользователя для участия в антифрод-анализе.
+    public int UnfairVotingMinVotesForAnalysis { get; set; } = 5;
+
+    // Весовые коэффициенты правил антифрод-оценки.
+    public decimal UnfairVotingSelfVoteRiskWeight { get; set; } = 1.5m;
+    public decimal UnfairVotingExtremesRiskWeight { get; set; } = 1.0m;
+    public decimal UnfairVotingFavoritismRiskWeight { get; set; } = 1.2m;
 
     // Редактируемый блок "Похвала и дифирамбы" на странице объявления победителей.
     public string WinnersPraiseText { get; set; } = string.Empty;

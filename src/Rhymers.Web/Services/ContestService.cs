@@ -181,14 +181,15 @@ public class ContestService
 
     public async Task<int> SendSanctionsWarningToUsersAsync(string createdBy, string customMessage, IEnumerable<string> userIds)
     {
-        return await SendSanctionsWarningToUsersPersonalizedAsync(createdBy, customMessage, userIds, null);
+        return await SendSanctionsWarningToUsersPersonalizedAsync(createdBy, customMessage, userIds, null, null);
     }
 
     public async Task<int> SendSanctionsWarningToUsersPersonalizedAsync(
         string createdBy,
         string template,
         IEnumerable<string> userIds,
-        IEnumerable<UnfairVotingSuspect>? suspects)
+        IEnumerable<UnfairVotingSuspect>? suspects,
+        string? contestId)
     {
         var templateText = string.IsNullOrWhiteSpace(template)
             ? DefaultSanctionWarningMessage
@@ -219,6 +220,7 @@ public class ContestService
         var now = DateTime.Now;
         var sender = string.IsNullOrWhiteSpace(createdBy) ? "admin" : createdBy;
         var title = "Предупреждение о санкциях";
+        var safeContestId = string.IsNullOrWhiteSpace(contestId) ? string.Empty : contestId.Trim();
 
         var notifications = users.Select(user =>
         {
@@ -239,9 +241,71 @@ public class ContestService
             };
         }).ToList();
 
+        var audits = users.Select(user =>
+        {
+            suspectsByUserId.TryGetValue(user.Id, out var suspect);
+            var reason = suspect?.Reason ?? "подозрительная активность по результатам проверки";
+            var risk = suspect?.RiskScore ?? 0m;
+            var message = BuildSanctionsWarningMessage(templateText, user.Username, reason, risk);
+
+            return new UserSanctionDispatchAudit
+            {
+                ContestId = safeContestId,
+                RecipientUserId = user.Id,
+                RecipientUsername = user.Username,
+                Reason = reason,
+                RiskScore = Math.Round(risk, 2),
+                SentBy = sender,
+                TemplateText = templateText,
+                RenderedMessage = message,
+                SentAt = now
+            };
+        }).ToList();
+
         await _context.UserSanctionNotifications.AddRangeAsync(notifications);
+        await _context.UserSanctionDispatchAudits.AddRangeAsync(audits);
         await _context.SaveChangesAsync();
         return notifications.Count;
+    }
+
+    public async Task<List<UserSanctionDispatchAudit>> GetSanctionsDispatchAuditAsync(string? contestId, int take = 50)
+    {
+        var safeTake = Math.Clamp(take, 1, 200);
+        var query = _context.UserSanctionDispatchAudits.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(contestId))
+        {
+            var normalizedContestId = contestId.Trim();
+            query = query.Where(x => x.ContestId == normalizedContestId);
+        }
+
+        return await query
+            .OrderByDescending(x => x.SentAt)
+            .Take(safeTake)
+            .ToListAsync();
+    }
+
+    public async Task<bool> SaveUnfairVotingSettingsAsync(
+        string contestId,
+        decimal riskThreshold,
+        int minVotesForAnalysis,
+        decimal selfVoteWeight,
+        decimal extremesWeight,
+        decimal favoritismWeight)
+    {
+        var contest = await _context.Contests.FirstOrDefaultAsync(c => c.Id == contestId);
+        if (contest == null)
+            return false;
+
+        contest.UnfairVotingDetectionThreshold = ClampDecimal(riskThreshold, 0m, 10m);
+        contest.UnfairVotingMinVotesForAnalysis = Math.Clamp(minVotesForAnalysis, 1, 100);
+        contest.UnfairVotingSelfVoteRiskWeight = ClampDecimal(selfVoteWeight, 0m, 10m);
+        contest.UnfairVotingExtremesRiskWeight = ClampDecimal(extremesWeight, 0m, 10m);
+        contest.UnfairVotingFavoritismRiskWeight = ClampDecimal(favoritismWeight, 0m, 10m);
+        contest.UpdatedAt = DateTime.Now;
+
+        await _context.SaveChangesAsync();
+        return true;
     }
 
     public async Task<List<UnfairVotingSuspect>> DetectPotentialUnfairVotingAsync(string contestId)
@@ -249,6 +313,11 @@ public class ContestService
         var contest = await _context.Contests.FirstOrDefaultAsync(c => c.Id == contestId);
         if (contest == null)
             return new List<UnfairVotingSuspect>();
+
+        var minVotesForAnalysis = Math.Clamp(contest.UnfairVotingMinVotesForAnalysis, 1, 100);
+        var selfVoteWeight = ClampDecimal(contest.UnfairVotingSelfVoteRiskWeight, 0m, 10m);
+        var extremesWeight = ClampDecimal(contest.UnfairVotingExtremesRiskWeight, 0m, 10m);
+        var favoritismWeight = ClampDecimal(contest.UnfairVotingFavoritismRiskWeight, 0m, 10m);
 
         var votes = await _context.ContestVotes
             .Where(v => v.ContestId == contestId)
@@ -278,7 +347,7 @@ public class ContestService
                 continue;
 
             var voterVotes = voterGroup.ToList();
-            if (voterVotes.Count < 5)
+            if (voterVotes.Count < minVotesForAnalysis)
                 continue;
 
             usersById.TryGetValue(voterGroup.Key, out var user);
@@ -293,7 +362,7 @@ public class ContestService
             if (selfVotesCount > 0)
             {
                 reasons.Add($"самооценка: {selfVotesCount}");
-                risk += 1.5m;
+                risk += selfVoteWeight;
             }
 
             var maxScore = voterVotes.Max(v => v.Score);
@@ -305,7 +374,7 @@ public class ContestService
             if (distinctScores <= 2 && (maxRatio >= 0.75m || minRatio >= 0.75m))
             {
                 reasons.Add("экстремальные оценки почти без середины");
-                risk += 1.0m;
+                risk += extremesWeight;
             }
 
             var byAuthor = voterVotes
@@ -334,7 +403,7 @@ public class ContestService
                 if (targetRatio >= 0.6m && top.Average - otherAverage >= 1.5)
                 {
                     reasons.Add("перекос оценок в пользу одного автора");
-                    risk += 1.2m;
+                    risk += favoritismWeight;
                 }
             }
 
@@ -469,6 +538,7 @@ public class ContestService
         contest.Stage = (int)previous.Value;
         contest.StageUpdatedAt = now;
         contest.UpdatedAt = now;
+        contest.LastManualRollbackAt = now;
         contest.IsActive = previous.Value != ContestStage.Finished;
 
         var normalizedReason = string.IsNullOrWhiteSpace(reason)
@@ -607,6 +677,13 @@ public class ContestService
         var changed = 0;
         foreach (var contest in contests)
         {
+            // Защита от гонок: если был ручной откат менее 2 минут назад, пропустить конкурс до следующего цикла.
+            if (contest.LastManualRollbackAt.HasValue &&
+                (now - contest.LastManualRollbackAt.Value).TotalMinutes < 2)
+            {
+                continue;
+            }
+
             var currentStage = GetContestStage(contest);
             var next = GetAutoStageForMoment(contest, now);
             if (next == currentStage)
@@ -657,6 +734,7 @@ public class ContestService
 
     public async Task<int> ApplyAutomaticTopicAssignmentAsync()
     {
+        var now = DateTime.Now;
         var contests = await _context.Contests
             .Where(c => c.AutoTopicAssignmentEnabled)
             .Where(c => c.IsActive)
@@ -671,6 +749,13 @@ public class ContestService
         var changed = 0;
         foreach (var contest in contests)
         {
+            // Защита от гонок: если был ручной откат менее 2 минут назад, пропустить конкурс до следующего цикла.
+            if (contest.LastManualRollbackAt.HasValue &&
+                (now - contest.LastManualRollbackAt.Value).TotalMinutes < 2)
+            {
+                continue;
+            }
+
             if (GetContestStage(contest) != ContestStage.TopicReception)
                 continue;
 
@@ -720,6 +805,7 @@ public class ContestService
 
     public async Task<int> ApplyAutomaticFairVotingAsync()
     {
+        var now = DateTime.Now;
         var contests = await _context.Contests
             .Where(c => c.AutoFairVotingEnabled)
             .Where(c => c.IsActive)
@@ -729,6 +815,13 @@ public class ContestService
         var changed = 0;
         foreach (var contest in contests)
         {
+            // Защита от гонок: если был ручной откат менее 2 минут назад, пропустить конкурс до следующего цикла.
+            if (contest.LastManualRollbackAt.HasValue &&
+                (now - contest.LastManualRollbackAt.Value).TotalMinutes < 2)
+            {
+                continue;
+            }
+
             var submissions = await _context.Submissions
                 .Where(s => s.ContestId == contest.Id && s.Status == WorkStatus.Approved)
                 .OrderBy(s => s.SubmittedAt)
@@ -1152,6 +1245,16 @@ public class ContestService
             .Replace("{username}", safeUsername, StringComparison.OrdinalIgnoreCase)
             .Replace("{reason}", safeReason, StringComparison.OrdinalIgnoreCase)
             .Replace("{risk}", safeRisk, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static decimal ClampDecimal(decimal value, decimal min, decimal max)
+    {
+        if (value < min)
+            return min;
+        if (value > max)
+            return max;
+
+        return value;
     }
 
     private static int ParseContestNumber(string? number)

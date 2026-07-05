@@ -100,4 +100,18 @@ public class ContestTests
         contest.CreatedAt.Should().BeOnOrAfter(beforeCreation);
         contest.UpdatedAt.Should().BeOnOrAfter(beforeCreation);
     }
+
+    [Fact]
+    public void Contest_NewInstance_HasUnfairVotingDefaults()
+    {
+        // Arrange & Act
+        var contest = new Contest();
+
+        // Assert
+        contest.UnfairVotingDetectionThreshold.Should().Be(1.5m);
+        contest.UnfairVotingMinVotesForAnalysis.Should().Be(5);
+        contest.UnfairVotingSelfVoteRiskWeight.Should().Be(1.5m);
+        contest.UnfairVotingExtremesRiskWeight.Should().Be(1.0m);
+        contest.UnfairVotingFavoritismRiskWeight.Should().Be(1.2m);
+    }
 }

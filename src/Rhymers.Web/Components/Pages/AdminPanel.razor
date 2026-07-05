@@ -298,7 +298,7 @@ else
                                 <div class="row g-3 mb-3">
                                     <div class="col-lg-6">
                                         <label class="form-label">Конкурс для автоанализа</label>
-                                        <select class="form-select mb-2" @bind="sanctionsContestId">
+                                        <select class="form-select mb-2" @bind="sanctionsContestId" @bind:after="OnSanctionsContestChangedAsync">
                                             <option value="">-- выберите конкурс --</option>
                                             @if (contests != null)
                                             {
@@ -308,6 +308,39 @@ else
                                                 }
                                             }
                                         </select>
+
+                                        <div class="border rounded p-2 mb-2 bg-light">
+                                            <div class="fw-semibold mb-2">Настройки антифрода конкурса</div>
+                                            <div class="row g-2">
+                                                <div class="col-md-6">
+                                                    <label class="form-label small">Порог риска</label>
+                                                    <input type="number" min="0" max="10" step="0.1" class="form-control form-control-sm" @bind="sanctionsAutoRiskThreshold" />
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label small">Мин. голосов для анализа</label>
+                                                    <input type="number" min="1" max="100" step="1" class="form-control form-control-sm" @bind="unfairVotingMinVotesForAnalysis" />
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label small">Вес: самооценка</label>
+                                                    <input type="number" min="0" max="10" step="0.1" class="form-control form-control-sm" @bind="unfairVotingSelfVoteWeight" />
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label small">Вес: экстремумы</label>
+                                                    <input type="number" min="0" max="10" step="0.1" class="form-control form-control-sm" @bind="unfairVotingExtremesWeight" />
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label small">Вес: фаворитизм</label>
+                                                    <input type="number" min="0" max="10" step="0.1" class="form-control form-control-sm" @bind="unfairVotingFavoritismWeight" />
+                                                </div>
+                                            </div>
+                                            <button class="btn btn-outline-primary btn-sm mt-2" @onclick="SaveUnfairVotingSettingsAsync" disabled="@string.IsNullOrWhiteSpace(sanctionsContestId)">Сохранить настройки антифрода</button>
+                                            @if (!string.IsNullOrWhiteSpace(unfairVotingSettingsResult))
+                                            {
+                                                <div class="alert @(unfairVotingSettingsSuccess ? "alert-success" : "alert-warning") mt-2 mb-0 py-2">
+                                                    @unfairVotingSettingsResult
+                                                </div>
+                                            }
+                                        </div>
                                         <div class="row g-2 mb-2">
                                             <div class="col-md-6">
                                                 <label class="form-label">Мин. риск для авторассылки</label>
@@ -414,6 +447,45 @@ else
                                         @sanctionsBroadcastResult
                                     </div>
                                 }
+
+                                <div class="mt-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <strong>Журнал отправки предупреждений</strong>
+                                        <button class="btn btn-outline-secondary btn-sm" @onclick="RefreshSanctionsAuditAsync" disabled="@string.IsNullOrWhiteSpace(sanctionsContestId)">Обновить</button>
+                                    </div>
+                                    @if (sanctionsAudit.Count == 0)
+                                    {
+                                        <div class="text-muted small">Пока нет записей для выбранного конкурса.</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-striped align-middle mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Когда</th>
+                                                        <th>Кому</th>
+                                                        <th>Риск</th>
+                                                        <th>Причина</th>
+                                                        <th>Отправил</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var item in sanctionsAudit)
+                                                    {
+                                                        <tr>
+                                                            <td>@item.SentAt.ToString("dd.MM.yyyy HH:mm")</td>
+                                                            <td>@item.RecipientUsername</td>
+                                                            <td>@item.RiskScore.ToString("0.00")</td>
+                                                            <td><small>@item.Reason</small></td>
+                                                            <td>@item.SentBy</td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    }
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -436,15 +508,22 @@ else
     private List<string> selectedContestIds = new();
     private string sanctionsContestId = string.Empty;
     private List<UnfairVotingSuspect> suspects = new();
+    private List<UserSanctionDispatchAudit> sanctionsAudit = new();
     private List<string> selectedSanctionsRecipientIds = new();
     private decimal sanctionsAutoRiskThreshold = 1.5m;
+    private int unfairVotingMinVotesForAnalysis = 5;
+    private decimal unfairVotingSelfVoteWeight = 1.5m;
+    private decimal unfairVotingExtremesWeight = 1.0m;
+    private decimal unfairVotingFavoritismWeight = 1.2m;
     private bool autoSelectOnlyByRiskThreshold = true;
     private string sanctionsWarningMessage = "Пользователь {username}, по результатам анализа зафиксированы признаки недобросовестной конкуренции: {reason}. Текущий риск: {risk}. Если нарушение повторится, будут применены санкции: аннулирование голосов, дисквалификация работы и ограничение участия.";
     private string sanctionsBroadcastResult = string.Empty;
+    private string unfairVotingSettingsResult = string.Empty;
     private string sanctionsPreviewText = string.Empty;
     private int lastAutoSelectedCount;
     private int lastSentCount;
     private bool sanctionsBroadcastSuccess;
+    private bool unfairVotingSettingsSuccess;
 
     protected override async Task OnInitializedAsync()
     {
@@ -469,6 +548,8 @@ else
             var contestList = (await ContestService.GetContestsAsync()).ToList();
             contests = contestList;
             sanctionsContestId = contestList.FirstOrDefault()?.Id ?? string.Empty;
+            ApplyContestAntiFraudSettingsFromSelected();
+            await RefreshSanctionsAuditAsync();
         }
         finally
         {
@@ -522,12 +603,39 @@ else
         if (currentUser == null)
             return;
 
-        var sent = await ContestService.SendSanctionsWarningToUsersPersonalizedAsync(currentUser.Username, sanctionsWarningMessage, selectedSanctionsRecipientIds, suspects);
+        var sent = await ContestService.SendSanctionsWarningToUsersPersonalizedAsync(currentUser.Username, sanctionsWarningMessage, selectedSanctionsRecipientIds, suspects, sanctionsContestId);
         lastSentCount = sent;
         sanctionsBroadcastSuccess = sent > 0;
         sanctionsBroadcastResult = sent > 0
             ? $"Предупреждение отправлено. Получателей: {sent}."
             : "Нет доступных получателей для рассылки.";
+
+        await RefreshSanctionsAuditAsync();
+    }
+
+    private async Task SaveUnfairVotingSettingsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(sanctionsContestId))
+            return;
+
+        var success = await ContestService.SaveUnfairVotingSettingsAsync(
+            sanctionsContestId,
+            sanctionsAutoRiskThreshold,
+            unfairVotingMinVotesForAnalysis,
+            unfairVotingSelfVoteWeight,
+            unfairVotingExtremesWeight,
+            unfairVotingFavoritismWeight);
+
+        unfairVotingSettingsSuccess = success;
+        unfairVotingSettingsResult = success
+            ? "Настройки антифрода сохранены для выбранного конкурса."
+            : "Не удалось сохранить настройки антифрода.";
+
+        if (!success)
+            return;
+
+        contests = (await ContestService.GetContestsAsync()).ToList();
+        ApplyContestAntiFraudSettingsFromSelected();
     }
 
     private async Task AnalyzeSuspectsAsync()
@@ -699,6 +807,30 @@ else
         return Math.Abs(sanctionsAutoRiskThreshold - preset) < 0.01m
             ? "btn btn-secondary"
             : "btn btn-outline-secondary";
+    }
+
+    private async Task OnSanctionsContestChangedAsync()
+    {
+        ApplyContestAntiFraudSettingsFromSelected();
+        await RefreshSanctionsAuditAsync();
+    }
+
+    private void ApplyContestAntiFraudSettingsFromSelected()
+    {
+        var contest = contests?.FirstOrDefault(c => string.Equals(c.Id, sanctionsContestId, StringComparison.OrdinalIgnoreCase));
+        if (contest == null)
+            return;
+
+        sanctionsAutoRiskThreshold = contest.UnfairVotingDetectionThreshold;
+        unfairVotingMinVotesForAnalysis = contest.UnfairVotingMinVotesForAnalysis;
+        unfairVotingSelfVoteWeight = contest.UnfairVotingSelfVoteRiskWeight;
+        unfairVotingExtremesWeight = contest.UnfairVotingExtremesRiskWeight;
+        unfairVotingFavoritismWeight = contest.UnfairVotingFavoritismRiskWeight;
+    }
+
+    private async Task RefreshSanctionsAuditAsync()
+    {
+        sanctionsAudit = await ContestService.GetSanctionsDispatchAuditAsync(sanctionsContestId, 30);
     }
 
     private void ToggleContest(string contestId, bool isChecked)
