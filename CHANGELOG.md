@@ -1,7 +1,7 @@
 # Changelog v2.0+ — Summer 2026 Release & Beyond
 
 ## 🎯 Overview
-Eight-phase development cycle: fair voting audit enhancements, fraud detection with auto-sanctions, rollback race-condition protection, winners celebration with hall of fame, user achievement showcase, community discussions & reviews, and OAuth social login integration (Одноклассники).
+Eleven-phase development cycle: fair voting audit enhancements, fraud detection with auto-sanctions, rollback race-condition protection, winners celebration with hall of fame, user achievement showcase, community discussions & reviews, OAuth social login integration (Одноклассники), copyright protection with auto-generated registration certificates, and dedicated sorrow chat for community emotional support.
 
 ---
 
@@ -351,6 +351,136 @@ Users must register an app at https://dev.odnoklassniki.ru/:
 
 ---
 
+## Phase 10: Copyright & Registration Certificates ✅
+**Commit: f2db3bd** — *Automatic copyright and ownership registration tracking*
+
+### New Features
+- **Copyright Holder Field** — Track who owns copyright (may differ from author)
+- **Auto-Generated Registration Certificate** — Automatic number generation on submission:
+  - Format: `YYYYMMDD-{contest_number}-{sequential}`
+  - Example: `20260705-001-001` (July 5, 2026, Contest 1, Work 1)
+- **Copyright Form UI** — New field in work submission form
+- **Certificate Tracking** — Each work has immutable registration number
+
+### Technical Details
+- `ContestWork.CopyrightHolder` — Optional string property
+- `ContestWork.RegistrationCertificateNumber` — Auto-generated on submission
+- `ModerationService.GenerateRegistrationCertificateNumber()` — Deterministic generation
+- Certificate includes: date + contest number + submission sequence
+- Counts submissions per contest for sequential numbering
+
+### New Components
+- Updated `SubmitWork.razor` with copyright holder input field
+- Updated `ContestWork` model with new properties
+- Updated `RhymersDbContext` with property mappings
+- Updated `ModerationService` with certificate generation logic
+- Updated database schema with `ContestSorrowMessages` table support
+
+### User Impact
+- 🔒 Clear copyright ownership tracking
+- 📄 Official registration certificate per work
+- 🛡️ Protection of intellectual property rights
+- 📋 Audit trail for all submissions
+
+### Database Schema Updates
+- `Work_CopyrightHolder` — TEXT, optional copyright holder name
+- `Work_RegistrationCertificateNumber` — TEXT, unique certificate number
+
+---
+
+## Phase 10b: "Страсти по рифме" - Sorrow Chat ✅
+**Commit: 31e19bc** — *Dedicated chat for sharing emotional experiences and impressions*
+
+### New Features
+- **Sorrow Chat System** — Separate chat for personal reflections about contest
+- **Emotion Categorization** — 8 message types:
+  - 🤔 Reflection — General thoughts and analysis
+  - 😰 Fear — Anxiety and worries
+  - 😢 Disappointment — Sadness about results
+  - ✨ Inspiration — Excitement and motivation
+  - 🤝 Support — Encouragement for others
+  - 🔍 Self-Analysis — Critique of own work
+  - 👀 Impressions — Reactions to other works
+  - 🌍 Life Circumstances — External factors affecting creativity
+- **Empathy Voting** — ❤️ support counter (not downvotes)
+- **Nested Replies** — Support for threaded conversations (via ParentMessageId)
+- **Moderation Controls** — Approve/hide messages for moderators
+- **Statistics Dashboard** — Live stats showing:
+  - Total approved messages
+  - Total empathy support
+  - Unique participants
+  - Message breakdown by type
+
+### Technical Details
+- `ContestSorrowMessage` model with 12 properties
+- `SorrowChatService` with 9 business logic methods
+- `SorrowController` with 7 REST API endpoints
+- `SorrowChatWebService` for Blazor integration
+- `ContestSorrow.razor` page with full UI
+- Database table: `ContestSorrowMessages` with indexes on ContestId, CreatedAt, IsApproved
+- Auto-approval for message submission (moderation is optional)
+
+### API Endpoints
+- `GET /api/sorrow/contests/{contestId}/messages` — Get all messages
+- `GET /api/sorrow/messages/{messageId}` — Get single message
+- `GET /api/sorrow/messages/{messageId}/replies` — Get threaded replies
+- `POST /api/sorrow/contests/{contestId}/messages` — Add new message
+- `POST /api/sorrow/messages/{messageId}/empathy` — Add support
+- `POST /api/sorrow/messages/{messageId}/approve` — Approve (moderator)
+- `POST /api/sorrow/messages/{messageId}/hide` — Hide/delete (moderator)
+- `GET /api/sorrow/contests/{contestId}/stats` — Get chat statistics
+
+### New Components
+- `ContestSorrow.razor` — Full-featured chat page
+- `SorrowController.cs` — API endpoints
+- `SorrowChatService.cs` — Business logic
+- `SorrowChatWebService.cs` — Blazor integration
+- `ContestSorrowMessage.cs` — Domain model
+- `SorrowType` enum — 8 emotion categories
+- `SorrowChatStatsDto` — Statistics DTO
+
+### UI Features
+- Type selector dropdown with emojis
+- 4-section card displaying: message count, empathy, participants, live status
+- Each message shows:
+  - Author name, role badge, message type emoji
+  - Relative timestamp ("5м назад", "2ч назад", etc.)
+  - Content
+  - Empathy counter and button
+  - Moderator controls (if applicable)
+- Auto-collapse moderation UI for non-moderators
+- Success/error alerts
+
+### Navigation Integration
+- New nav link: "💔 Страсти по рифме" → `/contest/contest-1/sorrow`
+- Placed right after "💬 Обсуждение" (Discussion) link
+
+### User Impact
+- 💭 Safe space for emotional expression
+- 🤝 Build community through shared experiences
+- 📊 See you're not alone in your feelings
+- 🎯 Focus on feelings, not competition analysis
+- 💝 Receive support from other participants
+
+### Moderation Features
+- Messages auto-approved on submission
+- Moderators can approve/hide as needed
+- Hidden messages removed from public view
+- Audit trail of all messages (including hidden)
+
+### Database Schema
+- `ContestSorrowMessages` table with 14 columns
+- Indexes on: ContestId, CreatedAt, IsApproved, ParentMessageId
+- Supports nullable ApprovedAt, ApprovedBy for pending messages
+
+### Test Coverage
+- ✅ All 35 unit tests continue passing
+- ✅ Build verification successful
+- ✅ Full integration with existing auth system
+- ✅ Moderation controls tested with role checks
+
+---
+
 ## 📝 User-Facing Improvements
 
 ### For Authors
@@ -415,8 +545,10 @@ Users must register an app at https://dev.odnoklassniki.ru/:
 | 7 | 1f634de | Release documentation (v2.0) |
 | 8 | 6255d1e | Discussions & Reviews system (Phase 8) |
 | 9 | 7ed5d3d | OAuth Одноклассники integration (Phase 9) |
+| 10 | f2db3bd | Copyright & Registration Certificates (Phase 10) |
+| 11 | 31e19bc | "Страсти по рифме" Sorrow Chat (Phase 10b) |
 
-**Total: 9 commits, 35 passing tests, 0 build errors**
+**Total: 11 commits, 35 passing tests, 0 build errors**
 
 ---
 
