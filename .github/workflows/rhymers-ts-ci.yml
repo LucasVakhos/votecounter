@@ -1,0 +1,42 @@
+name: Rhymers TS CI
+
+on:
+  pull_request:
+    paths:
+      - "rhymers-ts/**"
+      - ".github/workflows/rhymers-ts-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "rhymers-ts/**"
+      - ".github/workflows/rhymers-ts-ci.yml"
+
+jobs:
+  rhymers-ts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rhymers-ts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: rhymers-ts/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: API tests
+        run: npm run test
+
+      - name: Verify migrations
+        run: npm run migrate:verify
