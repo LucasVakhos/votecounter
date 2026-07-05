@@ -84,9 +84,13 @@
                             <th>Автор</th>
                             <th>Голосов людей</th>
                             <th>Средний (люди)</th>
-                            <th>Системный балл</th>
-                            <th>Разница</th>
-                            <th>Обновлено</th>
+                            <th>Честный бот</th>
+                            <th>Админ-авто</th>
+                            <th>Разница (честный)</th>
+                            <th>Разница (админ)</th>
+                            <th>Обновлено (честный)</th>
+                            <th>Обновлено (админ)</th>
+                            <th>Правило</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -98,18 +102,31 @@
                                 <td>@GetAuthorDisplay(row.Author)</td>
                                 <td>@row.HumanVotesCount</td>
                                 <td>@(row.HumanAverage.HasValue ? row.HumanAverage.Value.ToString("0.00") : "-")</td>
-                                <td>@(row.SystemScore.HasValue ? row.SystemScore.Value.ToString() : "-")</td>
+                                <td>@(row.FairSystemScore.HasValue ? row.FairSystemScore.Value.ToString() : "-")</td>
+                                <td>@(row.AdminSystemScore.HasValue ? row.AdminSystemScore.Value.ToString() : "-")</td>
                                 <td>
-                                    @if (row.Delta.HasValue)
+                                    @if (row.FairDelta.HasValue)
                                     {
-                                        <span class="@GetDeltaClass(row.Delta.Value)">@row.Delta.Value.ToString("+0.00;-0.00;0.00")</span>
+                                        <span class="@GetDeltaClass(row.FairDelta.Value)">@row.FairDelta.Value.ToString("+0.00;-0.00;0.00")</span>
                                     }
                                     else
                                     {
                                         <span>-</span>
                                     }
                                 </td>
-                                <td>@(row.SystemUpdatedAt.HasValue ? row.SystemUpdatedAt.Value.ToString("dd.MM.yyyy HH:mm") : "-")</td>
+                                <td>
+                                    @if (row.AdminDelta.HasValue)
+                                    {
+                                        <span class="@GetDeltaClass(row.AdminDelta.Value)">@row.AdminDelta.Value.ToString("+0.00;-0.00;0.00")</span>
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
+                                </td>
+                                <td>@(row.FairSystemUpdatedAt.HasValue ? row.FairSystemUpdatedAt.Value.ToString("dd.MM.yyyy HH:mm") : "-")</td>
+                                <td>@(row.AdminSystemUpdatedAt.HasValue ? row.AdminSystemUpdatedAt.Value.ToString("dd.MM.yyyy HH:mm") : "-")</td>
+                                <td><small>@row.RuleLabel</small></td>
                             </tr>
                         }
                     </tbody>
@@ -121,6 +138,7 @@
 
 @code {
     private const string FairVotingSystemUserId = "system:fair-voting";
+    private const string AdminAverageSystemUserId = "system:admin-average";
 
     private User? currentUser;
     private Contest? contest;
@@ -161,7 +179,9 @@
 
         var threshold = deviationThreshold < 0 ? 0 : deviationThreshold;
         return rows
-            .Where(r => r.Delta.HasValue && Math.Abs(r.Delta.Value) >= threshold)
+            .Where(r =>
+                (r.FairDelta.HasValue && Math.Abs(r.FairDelta.Value) >= threshold) ||
+                (r.AdminDelta.HasValue && Math.Abs(r.AdminDelta.Value) >= threshold))
             .ToList();
     }
 
@@ -187,20 +207,31 @@
             var submissionVotes = votes.Where(v => v.SubmissionId == submission.Id).ToList();
 
             var humanVotes = submissionVotes
-                .Where(v => !string.Equals(v.VoterUserId, FairVotingSystemUserId, StringComparison.OrdinalIgnoreCase))
+                .Where(v =>
+                    !string.Equals(v.VoterUserId, FairVotingSystemUserId, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(v.VoterUserId, AdminAverageSystemUserId, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
             var humanCount = humanVotes.Count;
             decimal? humanAverage = humanCount == 0 ? null : (decimal?)humanVotes.Average(v => v.Score);
 
-            var systemVote = submissionVotes
+            var fairVote = submissionVotes
                 .Where(v => string.Equals(v.VoterUserId, FairVotingSystemUserId, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(v => v.UpdatedAt)
                 .FirstOrDefault();
 
-            decimal? systemScore = systemVote?.Score;
-            decimal? delta = (humanAverage.HasValue && systemScore.HasValue)
-                ? systemScore.Value - humanAverage.Value
+            var adminVote = submissionVotes
+                .Where(v => string.Equals(v.VoterUserId, AdminAverageSystemUserId, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(v => v.UpdatedAt)
+                .FirstOrDefault();
+
+            decimal? fairScore = fairVote?.Score;
+            decimal? adminScore = adminVote?.Score;
+            decimal? fairDelta = (humanAverage.HasValue && fairScore.HasValue)
+                ? fairScore.Value - humanAverage.Value
+                : null;
+            decimal? adminDelta = (humanAverage.HasValue && adminScore.HasValue)
+                ? adminScore.Value - humanAverage.Value
                 : null;
 
             result.Add(new AuditRow
@@ -210,15 +241,31 @@
                 Author = submission.Work.Author,
                 HumanVotesCount = humanCount,
                 HumanAverage = humanAverage,
-                SystemScore = systemScore,
-                Delta = delta,
-                SystemUpdatedAt = systemVote?.UpdatedAt
+                FairSystemScore = fairScore,
+                AdminSystemScore = adminScore,
+                FairDelta = fairDelta,
+                AdminDelta = adminDelta,
+                FairSystemUpdatedAt = fairVote?.UpdatedAt,
+                AdminSystemUpdatedAt = adminVote?.UpdatedAt,
+                RuleLabel = BuildRuleLabel(fairVote != null, adminVote != null)
             });
         }
 
         return result
             .OrderBy(r => r.DisplayNo)
             .ToList();
+    }
+
+    private static string BuildRuleLabel(bool hasFairVote, bool hasAdminVote)
+    {
+        if (hasFairVote && hasAdminVote)
+            return "Честный бот + админ-авто по среднему";
+        if (hasFairVote)
+            return "Честный бот по среднему голосов";
+        if (hasAdminVote)
+            return "Админ-авто по среднему при закрытии";
+
+        return "Только человеческие оценки";
     }
 
     private string GetAuthorDisplay(string author)
@@ -250,8 +297,12 @@
         public string Author { get; set; } = string.Empty;
         public int HumanVotesCount { get; set; }
         public decimal? HumanAverage { get; set; }
-        public decimal? SystemScore { get; set; }
-        public decimal? Delta { get; set; }
-        public DateTime? SystemUpdatedAt { get; set; }
+        public decimal? FairSystemScore { get; set; }
+        public decimal? AdminSystemScore { get; set; }
+        public decimal? FairDelta { get; set; }
+        public decimal? AdminDelta { get; set; }
+        public DateTime? FairSystemUpdatedAt { get; set; }
+        public DateTime? AdminSystemUpdatedAt { get; set; }
+        public string RuleLabel { get; set; } = string.Empty;
     }
 }
