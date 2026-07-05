@@ -50,9 +50,14 @@ jobs:
       - name: Migration dry-run
         run: npm run migrate:dry-run 2>&1 | tee .artifacts/migrate-dry-run.log
 
-      - name: Security audit (report)
-        continue-on-error: true
-        run: npm audit --audit-level=high 2>&1 | tee .artifacts/audit.log
+      - name: Security audit (high severity gate)
+        run: |
+          set -o pipefail
+          npm audit --audit-level=high 2>&1 | tee .artifacts/audit.log
+
+      - name: Security audit (json report)
+        if: always()
+        run: npm audit --json > .artifacts/audit.json || true
 
       - name: Upload quality logs
         if: always()
