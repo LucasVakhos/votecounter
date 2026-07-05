@@ -8,7 +8,8 @@ import {
   getCurrentSchemaVersion,
   getMigrations,
   migrateDown,
-  runMigrations
+  runMigrations,
+  verifyMigrations
 } from "./migrations.js";
 
 function sanitizeMigrationName(input: string): string {
@@ -71,6 +72,11 @@ function main(): void {
     const count = runMigrations(db);
     console.log(`Applied migrations: ${count}`);
     printStatus(db);
+  } else if (command === "verify") {
+    const report = verifyMigrations();
+    console.log(
+      `Migration chain is valid: ${report.count} migrations (v${report.firstVersion}..v${report.lastVersion}) in ${MIGRATIONS_SQL_DIR}`
+    );
   } else if (command === "create") {
     const nameArg = process.argv[3];
     const dryRun = process.argv.includes("--dry-run");
@@ -88,7 +94,7 @@ function main(): void {
   } else if (command === "status") {
     printStatus(db);
   } else {
-    throw new Error(`Unknown command: ${command}. Use up | down [steps] | status | create <name> [--dry-run]`);
+    throw new Error(`Unknown command: ${command}. Use up | down [steps] | status | verify | create <name> [--dry-run]`);
   }
 
   db.close();

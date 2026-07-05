@@ -9,6 +9,12 @@ export type Migration = {
   down: string;
 };
 
+export type MigrationVerification = {
+  count: number;
+  firstVersion: number;
+  lastVersion: number;
+};
+
 export const MIGRATIONS_SQL_DIR = path.resolve(process.cwd(), "src", "migrations", "sql");
 
 function loadMigrations(): Migration[] {
@@ -66,7 +72,33 @@ function loadMigrations(): Migration[] {
     });
   }
 
-  return migrations.sort((a, b) => a.version - b.version);
+  const sorted = migrations.sort((a, b) => a.version - b.version);
+  if (sorted.length === 0) {
+    return sorted;
+  }
+
+  const first = sorted.at(0);
+  if (!first) {
+    return sorted;
+  }
+
+  if (first.version !== 1) {
+    throw new Error(`Migration chain must start at version 1, got v${first.version}`);
+  }
+
+  for (let i = 1; i < sorted.length; i += 1) {
+    const prev = sorted.at(i - 1);
+    const curr = sorted.at(i);
+    if (!prev || !curr) {
+      continue;
+    }
+
+    if (curr.version !== prev.version + 1) {
+      throw new Error(`Migration versions must be continuous. Gap detected between v${prev.version} and v${curr.version}`);
+    }
+  }
+
+  return sorted;
 }
 
 function ensureMigrationsTable(db: Database.Database): void {
@@ -109,6 +141,25 @@ export function runMigrations(db: Database.Database): number {
 
 export function getMigrations(): Migration[] {
   return loadMigrations();
+}
+
+export function verifyMigrations(): MigrationVerification {
+  const migrations = loadMigrations();
+  if (migrations.length === 0) {
+    throw new Error(`No migrations found in ${MIGRATIONS_SQL_DIR}`);
+  }
+
+  const first = migrations.at(0);
+  const last = migrations.at(-1);
+  if (!first || !last) {
+    throw new Error(`No migrations found in ${MIGRATIONS_SQL_DIR}`);
+  }
+
+  return {
+    count: migrations.length,
+    firstVersion: first.version,
+    lastVersion: last.version
+  };
 }
 
 export function getAppliedMigrationVersions(db: Database.Database): number[] {

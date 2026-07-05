@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import request from "supertest";
 import { createApp } from "../src/app.js";
 import { db } from "../src/db.js";
-import { getCurrentSchemaVersion, migrateDown, runMigrations } from "../src/migrations.js";
+import { getCurrentSchemaVersion, getMigrations, migrateDown, runMigrations } from "../src/migrations.js";
 
 function resetDb(): void {
   db.exec(`
@@ -18,6 +18,16 @@ function resetDb(): void {
 
 test.beforeEach(() => {
   resetDb();
+});
+
+test("migration versions are continuous", () => {
+  const migrations = getMigrations();
+  assert.ok(migrations.length > 0);
+  assert.equal(migrations[0].version, 1);
+
+  for (let i = 1; i < migrations.length; i += 1) {
+    assert.equal(migrations[i].version, migrations[i - 1].version + 1);
+  }
 });
 
 test("migration down/up smoke test", () => {
