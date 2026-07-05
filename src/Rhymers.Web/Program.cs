@@ -28,6 +28,14 @@ builder.Services.AddScoped<ContestService>();
 builder.Services.AddScoped<VoteService>();
 builder.Services.AddScoped<ModerationWebService>();
 builder.Services.AddScoped<AuthorizationWebService>();
+builder.Services.AddScoped<OdnoklassnikiOAuthService>();
+builder.Services.AddHttpClient<OdnoklassnikiOAuthService>();
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(30);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+});
 builder.Services.AddHostedService<ContestStageAutomationHostedService>();
 
 var app = builder.Build();
@@ -49,6 +57,7 @@ if (!app.Environment.IsDevelopment())
 app.UseStatusCodePagesWithReExecute("/not-found");
 app.UseHttpsRedirection();
 
+app.UseSession();
 app.UseAntiforgery();
 
 app.MapStaticAssets();

@@ -36,7 +36,7 @@
                         </div>
                     }
 
-                    <button @onclick="LoginAsync" disabled="@isLoading" class="btn btn-primary w-100">
+                    <button @onclick="LoginAsync" disabled="@isLoading" class="btn btn-primary w-100 mb-3">
                         @if (isLoading)
                         {
                             <span class="spinner-border spinner-border-sm me-2"></span>
@@ -47,6 +47,12 @@
                             <span>🔓 Войти</span>
                         }
                     </button>
+
+                    <div class="d-grid">
+                        <a href="/auth/oauth/odnoklassniki/login" class="btn btn-outline-primary" style="background: #ed812f; color: white; border-color: #ed812f;">
+                            🔓 Войти через Одноклассники
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
