@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import request from "supertest";
 import { createApp } from "../src/app.js";
 import { db } from "../src/db.js";
+import { getCurrentSchemaVersion, migrateDown, runMigrations } from "../src/migrations.js";
 
 function resetDb(): void {
   db.exec(`
@@ -17,6 +18,21 @@ function resetDb(): void {
 
 test.beforeEach(() => {
   resetDb();
+});
+
+test("migration down/up smoke test", () => {
+  assert.equal(getCurrentSchemaVersion(db), 2);
+
+  const reverted = migrateDown(db, 1);
+  assert.equal(reverted, 1);
+  assert.equal(getCurrentSchemaVersion(db), 1);
+
+  const applied = runMigrations(db);
+  assert.equal(applied, 1);
+  assert.equal(getCurrentSchemaVersion(db), 2);
+
+  const voteIndexes = db.prepare("PRAGMA index_list('votes')").all() as Array<{ name: string }>;
+  assert.ok(voteIndexes.some((x) => x.name === "idx_votes_contest_id"));
 });
 
 test("health endpoint exposes sqlite storage", async () => {
