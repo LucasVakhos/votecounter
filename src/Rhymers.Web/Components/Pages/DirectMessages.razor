@@ -140,37 +140,46 @@
 
                     <!-- Форма отправки -->
                     <div class="card-footer bg-light">
-                        <div class="input-group">
-                            <input type="text" class="form-control" placeholder="Введите сообщение..." 
-                                   @bind="newMessageContent" @onkeyup="@HandleKeyPress" />
-                            <button class="btn btn-primary" @onclick="SendMessage" disabled="@(string.IsNullOrWhiteSpace(newMessageContent))">
-                                Отправить →
-                            </button>
-                            <button class="btn btn-secondary" @onclick="ShowEmojiPicker">
-                                😊 Смайлик
-                            </button>
-                            <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#imageUploadModal">
-                                🖼️ Картинка
-                            </button>
+                        <div class="d-flex flex-column gap-2">
+                            <div class="input-group">
+                                <input type="text" class="form-control" placeholder="Введите сообщение..."
+                                       @bind="newMessageContent" @onkeyup="@HandleKeyPress" />
+                                <button class="btn btn-primary" @onclick="SendMessage" disabled="@(string.IsNullOrWhiteSpace(newMessageContent))">
+                                    Отправить →
+                                </button>
+                            </div>
+
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <label class="btn btn-sm btn-outline-secondary mb-0">
+                                    🖼️ Картинка
+                                    <InputFile OnChange="HandleImageSelect" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none" />
+                                </label>
+                                @if (!string.IsNullOrEmpty(pendingImageName))
+                                {
+                                    <span class="small text-muted">📎 @pendingImageName</span>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="ClearPendingImage">Убрать</button>
+                                }
+                            </div>
+
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach (var option in emojiOptions)
+                                {
+                                    <button type="button"
+                                            class="btn btn-sm @(pendingEmojiCodes.Contains(option.Value) ? "btn-primary" : "btn-outline-secondary")"
+                                            @onclick="() => TogglePendingEmoji(option.Value)">
+                                        @option.Key
+                                    </button>
+                                }
+                            </div>
+
+                            @if (pendingEmojiCodes.Count > 0)
+                            {
+                                <small class="text-muted">Выбрано эмодзи: @string.Join(" ", pendingEmojiCodes.Select(GetEmojiByCode))</small>
+                            }
                         </div>
                     </div>
                 </div>
             }
-        </div>
-    </div>
-</div>
-
-<!-- Modal для загрузки картинки -->
-<div class="modal fade" id="imageUploadModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">🖼️ Загрузить картинку</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <InputFile class="form-control" OnChange="HandleImageSelect" accept="image/*" />
-            </div>
         </div>
     </div>
 </div>
@@ -187,6 +196,10 @@
     private string? selectedOtherUserId;
     private string? selectedOtherUserName;
     private string newMessageContent = string.Empty;
+    private IBrowserFile? pendingImageFile;
+    private string? pendingImageName;
+    private readonly List<string> pendingEmojiCodes = new();
+    private readonly Dictionary<string, string> emojiDictionary = new();
     private ElementReference messagesContainer;
 
     protected override async Task OnInitializedAsync()
@@ -196,6 +209,10 @@
             return;
 
         currentUserId = currentUser.Id;
+        foreach (var pair in AttachmentService.GetEmojiDictionary())
+        {
+            emojiDictionary[pair.Key] = pair.Value;
+        }
         await LoadDialogs();
 
         if (!string.IsNullOrEmpty(OtherUserId))
@@ -242,7 +259,12 @@
             return;
 
         var message = await DirectMessageService.SendMessageAsync(currentUserId, selectedOtherUserId, newMessageContent);
+
+        await AttachDraftsToMessage(message.Id);
+
         newMessageContent = string.Empty;
+        ClearPendingImage();
+        pendingEmojiCodes.Clear();
 
         await SelectDialog(selectedOtherUserId);
         await RefreshScrollPosition();
@@ -258,24 +280,43 @@
 
     private async Task HandleImageSelect(InputFileChangeEventArgs e)
     {
-        if (currentUserId == null || selectedOtherUserId == null || messages == null || !messages.Any())
-            return;
-
-        var lastMessageId = messages.Last().Message.Id;
-
-        await AttachmentService.UploadImageAsync(lastMessageId, e.File, MessageAttachmentType.DirectMessage);
-        await SelectDialog(selectedOtherUserId);
+        pendingImageFile = e.File;
+        pendingImageName = e.File.Name;
+        await Task.CompletedTask;
     }
 
-    private async Task ShowEmojiPicker()
+    private IEnumerable<KeyValuePair<string, string>> emojiOptions => emojiDictionary.OrderBy(x => x.Value);
+
+    private void TogglePendingEmoji(string emojiCode)
     {
-        // TODO: Implement emoji picker modal
-        var emojiCode = "smile"; // Example
-        if (currentUserId != null && selectedOtherUserId != null && messages != null && messages.Any())
+        if (pendingEmojiCodes.Contains(emojiCode))
+            pendingEmojiCodes.Remove(emojiCode);
+        else
+            pendingEmojiCodes.Add(emojiCode);
+    }
+
+    private string GetEmojiByCode(string emojiCode)
+    {
+        var pair = emojiDictionary.FirstOrDefault(x => x.Value == emojiCode);
+        return string.IsNullOrEmpty(pair.Key) ? emojiCode : pair.Key;
+    }
+
+    private void ClearPendingImage()
+    {
+        pendingImageFile = null;
+        pendingImageName = null;
+    }
+
+    private async Task AttachDraftsToMessage(string messageId)
+    {
+        if (pendingImageFile != null)
         {
-            var lastMessageId = messages.Last().Message.Id;
-            await AttachmentService.AddEmojiAsync(lastMessageId, emojiCode, MessageAttachmentType.DirectMessage);
-            await SelectDialog(selectedOtherUserId);
+            await AttachmentService.UploadImageAsync(messageId, pendingImageFile, MessageAttachmentType.DirectMessage);
+        }
+
+        foreach (var emojiCode in pendingEmojiCodes)
+        {
+            await AttachmentService.AddEmojiAsync(messageId, emojiCode, MessageAttachmentType.DirectMessage);
         }
     }
 
