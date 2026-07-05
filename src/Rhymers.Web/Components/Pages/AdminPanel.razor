@@ -325,7 +325,11 @@ else
                                                 </div>
                                             </div>
                                         </div>
-                                        <button class="btn btn-outline-danger btn-sm" @onclick="AnalyzeSuspectsAsync" disabled="@string.IsNullOrWhiteSpace(sanctionsContestId)">Найти пойманных анализом</button>
+                                        <div class="d-flex gap-2 flex-wrap">
+                                            <button class="btn btn-outline-danger btn-sm" @onclick="AnalyzeSuspectsAsync" disabled="@string.IsNullOrWhiteSpace(sanctionsContestId)">Найти пойманных анализом</button>
+                                            <button class="btn btn-outline-secondary btn-sm" @onclick="SelectAllDetectedSuspects" disabled="@(suspects.Count == 0)">Выбрать всех пойманных</button>
+                                            <button class="btn btn-outline-secondary btn-sm" @onclick="DeselectAllDetectedSuspects" disabled="@(suspects.Count == 0)">Снять всех пойманных</button>
+                                        </div>
 
                                         @if (suspects.Count > 0)
                                         {
@@ -578,6 +582,40 @@ else
         sanctionsPreviewText = string.Empty;
         sanctionsBroadcastResult = "Список получателей очищен.";
         sanctionsBroadcastSuccess = false;
+    }
+
+    private void SelectAllDetectedSuspects()
+    {
+        var added = 0;
+        foreach (var suspect in suspects)
+        {
+            if (selectedSanctionsRecipientIds.Any(x => string.Equals(x, suspect.UserId, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            selectedSanctionsRecipientIds.Add(suspect.UserId);
+            added++;
+        }
+
+        sanctionsBroadcastResult = added > 0
+            ? $"Добавлено пойманных получателей: {added}."
+            : "Все пойманные уже выбраны.";
+        sanctionsBroadcastSuccess = added > 0;
+    }
+
+    private void DeselectAllDetectedSuspects()
+    {
+        if (suspects.Count == 0)
+            return;
+
+        var suspectIds = suspects.Select(x => x.UserId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var before = selectedSanctionsRecipientIds.Count;
+        selectedSanctionsRecipientIds.RemoveAll(x => suspectIds.Contains(x));
+        var removed = before - selectedSanctionsRecipientIds.Count;
+
+        sanctionsBroadcastResult = removed > 0
+            ? $"Снято пойманных получателей: {removed}."
+            : "Пойманные пользователи не были выбраны.";
+        sanctionsBroadcastSuccess = removed > 0;
     }
 
     private void SetSanctionsRiskThreshold(decimal value)
