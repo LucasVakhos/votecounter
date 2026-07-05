@@ -1,0 +1,202 @@
+@page "/contest/{ContestId}/discussion"
+@using Rhymers.Core.Models
+@using Rhymers.Web.Services
+@using Rhymers.Core.Services
+@inject DiscussionService DiscussionService
+@inject AuthorizationWebService AuthService
+@inject ContestService ContestService
+
+<PageTitle>Обсуждение конкурса - Рифмовки</PageTitle>
+
+<div class="container mt-5">
+    <h1 class="mb-4">💬 Обсуждение: @(contestName ?? "Загрузка...")</h1>
+
+    @if (currentUser == null)
+    {
+        <div class="alert alert-info">
+            <strong>Пожалуйста, авторизуйтесь</strong>, чтобы участвовать в обсуждении.
+        </div>
+    }
+    else
+    {
+        <!-- Форма добавления комментария -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Ваш комментарий</h5>
+            </div>
+            <div class="card-body">
+                <EditForm Model="newComment" OnValidSubmit="AddComment">
+                    <DataAnnotationsValidator />
+
+                    <div class="mb-3">
+                        <textarea class="form-control" @bind="newComment.Content" 
+                                  placeholder="Поделитесь своим мнением о конкурсе..." 
+                                  rows="4" required></textarea>
+                        <ValidationMessage For="@(() => newComment.Content)" class="text-danger" />
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
+                        @if (isSubmitting)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        Добавить комментарий
+                    </button>
+                </EditForm>
+            </div>
+        </div>
+    }
+
+    <!-- Список комментариев -->
+    @if (comments == null)
+    {
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Загрузка...</span>
+            </div>
+        </div>
+    }
+    else if (comments.Count == 0)
+    {
+        <div class="alert alert-info">
+            <strong>Комментариев ещё нет.</strong> Будьте первым, кто поделится своим мнением!
+        </div>
+    }
+    else
+    {
+        @foreach (var comment in comments.Where(c => c.ParentCommentId == null))
+        {
+            <CommentCard Comment="comment" 
+                         Replies="comments.Where(c => c.ParentCommentId == comment.Id).ToList()"
+                         CurrentUser="currentUser"
+                         OnLike="LikeComment"
+                         OnApprove="ApproveComment"
+                         OnHide="HideComment" />
+        }
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string ContestId { get; set; } = string.Empty;
+
+    private User? currentUser;
+    private string? contestName;
+    private List<ContestComment> comments = new();
+    private bool isSubmitting = false;
+
+    private class NewCommentModel
+    {
+        public string Content { get; set; } = string.Empty;
+    }
+
+    private NewCommentModel newComment = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            currentUser = await AuthService.GetCurrentUserAsync();
+            
+            var contest = await ContestService.GetContestAsync(ContestId);
+            contestName = contest?.Name;
+
+            await LoadComments();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка инициализации: {ex.Message}");
+        }
+    }
+
+    private async Task LoadComments()
+    {
+        try
+        {
+            bool includeUnapproved = currentUser?.Role >= UserRole.Moderator;
+            comments = await DiscussionService.GetContestCommentsAsync(
+                ContestId, 
+                includeUnapproved: includeUnapproved,
+                includeHidden: false);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка загрузки комментариев: {ex.Message}");
+        }
+    }
+
+    private async Task AddComment()
+    {
+        if (currentUser == null || string.IsNullOrWhiteSpace(newComment.Content))
+            return;
+
+        try
+        {
+            isSubmitting = true;
+            await DiscussionService.AddContestCommentAsync(
+                ContestId,
+                currentUser.DisplayName,
+                currentUser.Role,
+                newComment.Content);
+
+            newComment.Content = string.Empty;
+            await LoadComments();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка добавления комментария: {ex.Message}");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task LikeComment(string commentId)
+    {
+        if (currentUser == null)
+            return;
+
+        try
+        {
+            await DiscussionService.LikeContestCommentAsync(commentId);
+            await LoadComments();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка лайка: {ex.Message}");
+        }
+    }
+
+    private async Task ApproveComment(string commentId)
+    {
+        if (currentUser?.Role < UserRole.Moderator)
+            return;
+
+        try
+        {
+            await DiscussionService.ApproveContestCommentAsync(commentId, currentUser.DisplayName);
+            await LoadComments();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка одобрения: {ex.Message}");
+        }
+    }
+
+    private async Task HideComment(string commentId)
+    {
+        if (currentUser?.Role < UserRole.Moderator)
+            return;
+
+        try
+        {
+            await DiscussionService.HideContestCommentAsync(commentId);
+            await LoadComments();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка скрытия: {ex.Message}");
+        }
+    }
+}

@@ -25,6 +25,8 @@ public sealed class RhymersDbContext : DbContext
     public DbSet<UserSanctionDispatchAudit> UserSanctionDispatchAudits { get; set; } = null!;
     public DbSet<HallOfFameEntry> HallOfFameEntries { get; set; } = null!;
     public DbSet<VoterSetting> Voters { get; set; } = null!;
+    public DbSet<ContestComment> ContestComments { get; set; } = null!;
+    public DbSet<WorkReview> WorkReviews { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -210,6 +212,49 @@ public sealed class RhymersDbContext : DbContext
             entity.HasIndex(e => e.ContestId);
             entity.HasIndex(e => e.AddedAt);
             entity.HasIndex(e => new { e.ContestDate, e.Place });
+        });
+
+        // ContestComment конфигурация
+        modelBuilder.Entity<ContestComment>(entity =>
+        {
+            entity.ToTable("ContestComments");
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Id).ValueGeneratedNever();
+            entity.Property(c => c.ContestId).HasMaxLength(256).IsRequired();
+            entity.Property(c => c.AuthorName).HasMaxLength(256).IsRequired();
+            entity.Property(c => c.Content).IsRequired();
+            entity.Property(c => c.IsApproved).HasDefaultValue(false);
+            entity.Property(c => c.IsHidden).HasDefaultValue(false);
+            entity.Property(c => c.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(c => c.ParentCommentId).HasMaxLength(256);
+            entity.HasIndex(c => c.ContestId);
+            entity.HasIndex(c => c.CreatedAt);
+            entity.HasIndex(c => c.IsApproved);
+            entity.HasIndex(c => c.ParentCommentId);
+        });
+
+        // WorkReview конфигурация
+        modelBuilder.Entity<WorkReview>(entity =>
+        {
+            entity.ToTable("WorkReviews");
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.Id).ValueGeneratedNever();
+            entity.Property(r => r.ContestId).HasMaxLength(256).IsRequired();
+            entity.Property(r => r.WorkTitle).HasMaxLength(256);
+            entity.Property(r => r.ReviewerName).HasMaxLength(256).IsRequired();
+            entity.Property(r => r.Title).HasMaxLength(512).IsRequired();
+            entity.Property(r => r.Content).IsRequired();
+            entity.Property(r => r.Strengths).HasMaxLength(1024);
+            entity.Property(r => r.AreasForImprovement).HasMaxLength(1024);
+            entity.Property(r => r.IsApproved).HasDefaultValue(false);
+            entity.Property(r => r.IsHidden).HasDefaultValue(false);
+            entity.Property(r => r.IsPublic).HasDefaultValue(false);
+            entity.Property(r => r.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(r => r.AuthorResponse).HasMaxLength(2000);
+            entity.HasIndex(r => r.ContestId);
+            entity.HasIndex(r => r.CreatedAt);
+            entity.HasIndex(r => r.IsApproved);
+            entity.HasIndex(r => new { r.ContestId, r.WorkNumber });
         });
     }
 }

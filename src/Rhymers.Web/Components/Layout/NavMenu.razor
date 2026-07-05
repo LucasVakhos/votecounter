@@ -51,6 +51,12 @@
             </NavLink>
         </div>
 
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="contest/contest-1/discussion">
+                <span class="oi oi-chat" aria-hidden="true"></span> 💬 Обсуждение
+            </NavLink>
+        </div>
+
         @if (currentUser?.Role >= UserRole.Author)
         {
             <div class="nav-item px-3">

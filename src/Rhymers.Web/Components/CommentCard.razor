@@ -1,0 +1,101 @@
+@using Rhymers.Core.Models
+@using Rhymers.Core.Services
+
+<div class="comment-item mb-3">
+    <div class="card border-start border-primary">
+        <div class="card-body">
+            <!-- Заголовок комментария -->
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                    <h6 class="card-subtitle mb-1">
+                        <strong>@Comment.AuthorName</strong>
+                        <span class="badge bg-info ms-2">@GetRoleBadge(Comment.AuthorRole)</span>
+                    </h6>
+                    <small class="text-muted">@Comment.CreatedAt:D</small>
+                </div>
+                @if (CurrentUser?.Role >= UserRole.Moderator)
+                {
+                    <div class="btn-group btn-group-sm">
+                        @if (!Comment.IsApproved)
+                        {
+                            <button class="btn btn-outline-success" @onclick="() => OnApprove.InvokeAsync(Comment.Id)" title="Одобрить">
+                                ✓
+                            </button>
+                        }
+                        <button class="btn btn-outline-danger" @onclick="() => OnHide.InvokeAsync(Comment.Id)" title="Скрыть">
+                            ✕
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <!-- Статус -->
+            @if (!Comment.IsApproved)
+            {
+                <div class="alert alert-warning py-1 px-2 mb-2 small">
+                    ⏳ Ожидает модерации
+                </div>
+            }
+
+            <!-- Текст комментария -->
+            <p class="card-text">@Comment.Content</p>
+
+            <!-- Действия -->
+            <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => OnLike.InvokeAsync(Comment.Id)">
+                    👍 @Comment.LikeCount
+                </button>
+                @if (Comment.ParentCommentId == null)
+                {
+                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#reply-@Comment.Id">
+                        💬 Ответить
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Ответы -->
+    @if (Replies.Any())
+    {
+        <div class="ms-4 mt-2">
+            @foreach (var reply in Replies)
+            {
+                <CommentCard Comment="reply" 
+                             Replies="new List<ContestComment>()"
+                             CurrentUser="CurrentUser"
+                             OnLike="OnLike"
+                             OnApprove="OnApprove"
+                             OnHide="OnHide" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public ContestComment Comment { get; set; } = null!;
+
+    [Parameter]
+    public List<ContestComment> Replies { get; set; } = new();
+
+    [Parameter]
+    public User? CurrentUser { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnLike { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnApprove { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnHide { get; set; }
+
+    private string GetRoleBadge(UserRole role) => role switch
+    {
+        UserRole.Admin => "Админ",
+        UserRole.Moderator => "Модератор",
+        UserRole.Author => "Автор",
+        _ => "Читатель"
+    };
+}

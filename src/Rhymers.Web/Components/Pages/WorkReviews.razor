@@ -1,0 +1,306 @@
+@page "/contest/{ContestId}/work/{WorkNumber}/reviews"
+@using Rhymers.Core.Models
+@using Rhymers.Web.Services
+@using Rhymers.Core.Services
+@inject DiscussionService DiscussionService
+@inject AuthorizationWebService AuthService
+@inject ContestService ContestService
+
+<PageTitle>Рецензии - Рифмовки</PageTitle>
+
+<div class="container mt-5">
+    <div class="mb-4">
+        <a href="/contest/@ContestId" class="btn btn-outline-secondary btn-sm">← Вернуться к конкурсу</a>
+    </div>
+
+    <h1 class="mb-2">📝 Рецензии на работу</h1>
+    <h5 class="text-muted mb-4">@(workTitle ?? "Работа #" + WorkNumber)</h5>
+
+    @if (currentUser == null || currentUser.Role == UserRole.Reader)
+    {
+        <div class="alert alert-info">
+            <strong>Авторизуйтесь</strong>, чтобы оставлять рецензии.
+        </div>
+    }
+    else
+    {
+        <!-- Форма добавления рецензии -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Написать рецензию</h5>
+            </div>
+            <div class="card-body">
+                <EditForm Model="newReview" OnValidSubmit="AddReview">
+                    <DataAnnotationsValidator />
+
+                    <div class="mb-3">
+                        <label class="form-label">Заголовок рецензии *</label>
+                        <input type="text" class="form-control" @bind="newReview.Title" 
+                               placeholder="Например: Блестящая работа о человеческих чувствах" required />
+                        <ValidationMessage For="@(() => newReview.Title)" class="text-danger" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Рецензия *</label>
+                        <textarea class="form-control" @bind="newReview.Content" 
+                                  placeholder="Подробно расскажите о впечатлении от работы..." 
+                                  rows="5" required></textarea>
+                        <ValidationMessage For="@(() => newReview.Content)" class="text-danger" />
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="form-label">Оценка</label>
+                            <div class="star-rating">
+                                @for (int i = 1; i <= 5; i++)
+                                {
+                                    int star = i;
+                                    <button type="button" class="btn btn-sm @(newReview.Rating >= star ? "btn-warning" : "btn-outline-warning")"
+                                            @onclick="() => newReview.Rating = star">
+                                        ⭐
+                                    </button>
+                                }
+                                @if (newReview.Rating.HasValue)
+                                {
+                                    <span class="ms-2">@newReview.Rating / 5</span>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="col-md-8">
+                            <label class="form-label">Достоинства работы</label>
+                            <textarea class="form-control" @bind="newReview.Strengths" 
+                                      placeholder="Что хорошо получилось..." rows="2"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="mb-3 mt-3">
+                        <label class="form-label">Области для улучшения</label>
+                        <textarea class="form-control" @bind="newReview.AreasForImprovement" 
+                                  placeholder="Что можно улучшить..." rows="2"></textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
+                        @if (isSubmitting)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        Опубликовать рецензию
+                    </button>
+                </EditForm>
+            </div>
+        </div>
+    }
+
+    <!-- Статистика -->
+    @if (stats != null)
+    {
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">Всего рецензий</h6>
+                        <h3>@stats.Value.TotalReviews</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">Средняя оценка</h6>
+                        <h3>
+                            @if (stats.Value.AverageRating.HasValue)
+                            {
+                                @($"{stats.Value.AverageRating:F1} / 5 ⭐")
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6 class="card-title">Полезные рецензии</h6>
+                        <h3>@stats.Value.TopReviewsCount</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Список рецензий -->
+    @if (reviews == null)
+    {
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Загрузка...</span>
+            </div>
+        </div>
+    }
+    else if (reviews.Count == 0)
+    {
+        <div class="alert alert-info">
+            <strong>Рецензий ещё нет.</strong> Будьте первым, кто поделится своим впечатлением!
+        </div>
+    }
+    else
+    {
+        @foreach (var review in reviews)
+        {
+            <ReviewCard Review="review"
+                        CurrentUser="currentUser"
+                        OnMarkHelpful="MarkHelpful"
+                        OnApprove="ApproveReview"
+                        OnHide="HideReview" />
+        }
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string ContestId { get; set; } = string.Empty;
+
+    [Parameter]
+    public int WorkNumber { get; set; }
+
+    private User? currentUser;
+    private string? workTitle;
+    private List<WorkReview> reviews = new();
+    private (int TotalReviews, decimal? AverageRating, int TopReviewsCount)? stats;
+    private bool isSubmitting = false;
+
+    private class NewReviewModel
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
+        public int? Rating { get; set; }
+        public string? Strengths { get; set; }
+        public string? AreasForImprovement { get; set; }
+    }
+
+    private NewReviewModel newReview = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            currentUser = await AuthService.GetCurrentUserAsync();
+            workTitle = $"Работа #{WorkNumber}"; // Can be enhanced to show actual work title
+
+            await LoadReviews();
+            await LoadStats();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка инициализации: {ex.Message}");
+        }
+    }
+
+    private async Task LoadReviews()
+    {
+        try
+        {
+            reviews = await DiscussionService.GetWorkReviewsAsync(ContestId, WorkNumber);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка загрузки рецензий: {ex.Message}");
+        }
+    }
+
+    private async Task LoadStats()
+    {
+        try
+        {
+            stats = await DiscussionService.GetWorkReviewStatsAsync(ContestId, WorkNumber);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка загрузки статистики: {ex.Message}");
+        }
+    }
+
+    private async Task AddReview()
+    {
+        if (currentUser == null || string.IsNullOrWhiteSpace(newReview.Title) || string.IsNullOrWhiteSpace(newReview.Content))
+            return;
+
+        try
+        {
+            isSubmitting = true;
+            await DiscussionService.AddWorkReviewAsync(
+                ContestId,
+                WorkNumber,
+                workTitle ?? string.Empty,
+                currentUser.DisplayName,
+                currentUser.Role,
+                newReview.Title,
+                newReview.Content,
+                newReview.Rating,
+                newReview.Strengths,
+                newReview.AreasForImprovement);
+
+            newReview = new NewReviewModel();
+            await LoadReviews();
+            await LoadStats();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка добавления рецензии: {ex.Message}");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task MarkHelpful(string reviewId)
+    {
+        try
+        {
+            await DiscussionService.MarkReviewAsHelpfulAsync(reviewId);
+            await LoadReviews();
+            await LoadStats();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка: {ex.Message}");
+        }
+    }
+
+    private async Task ApproveReview(string reviewId)
+    {
+        if (currentUser?.Role < UserRole.Moderator)
+            return;
+
+        try
+        {
+            await DiscussionService.ApproveWorkReviewAsync(reviewId, currentUser.DisplayName);
+            await LoadReviews();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка: {ex.Message}");
+        }
+    }
+
+    private async Task HideReview(string reviewId)
+    {
+        if (currentUser?.Role < UserRole.Moderator)
+            return;
+
+        try
+        {
+            await DiscussionService.HideWorkReviewAsync(reviewId);
+            await LoadReviews();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка: {ex.Message}");
+        }
+    }
+}

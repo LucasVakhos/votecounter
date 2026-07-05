@@ -1,0 +1,115 @@
+@using Rhymers.Core.Models
+
+<div class="review-item card mb-3">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <h6 class="card-title mb-1">@Review.Title</h6>
+                <small class="text-muted">
+                    от <strong>@Review.ReviewerName</strong> 
+                    <span class="badge bg-secondary ms-1">@GetRoleBadge(Review.ReviewerRole)</span>
+                    • @Review.CreatedAt:D
+                </small>
+            </div>
+            @if (CurrentUser?.Role >= UserRole.Moderator)
+            {
+                <div class="btn-group btn-group-sm">
+                    @if (!Review.IsApproved)
+                    {
+                        <button class="btn btn-outline-success" @onclick="() => OnApprove.InvokeAsync(Review.Id)" title="Одобрить">
+                            ✓
+                        </button>
+                    }
+                    <button class="btn btn-outline-danger" @onclick="() => OnHide.InvokeAsync(Review.Id)" title="Скрыть">
+                        ✕
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card-body">
+        <!-- Оценка -->
+        @if (Review.Rating.HasValue)
+        {
+            <div class="mb-2">
+                <span class="h5">
+                    @for (int i = 0; i < Review.Rating.Value; i++)
+                    {
+                        <span class="text-warning">⭐</span>
+                    }
+                    <span class="ms-2">@Review.Rating / 5</span>
+                </span>
+            </div>
+        }
+
+        <!-- Статус -->
+        @if (!Review.IsApproved)
+        {
+            <div class="alert alert-warning py-1 px-2 mb-2 small">
+                ⏳ Ожидает модерации
+            </div>
+        }
+
+        <!-- Основной текст -->
+        <p class="card-text">@Review.Content</p>
+
+        <!-- Достоинства и недостатки -->
+        @if (!string.IsNullOrEmpty(Review.Strengths))
+        {
+            <div class="mb-2">
+                <strong class="text-success">✓ Достоинства:</strong>
+                <p class="small mb-0">@Review.Strengths</p>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(Review.AreasForImprovement))
+        {
+            <div class="mb-2">
+                <strong class="text-warning">⚠ Для улучшения:</strong>
+                <p class="small mb-0">@Review.AreasForImprovement</p>
+            </div>
+        }
+
+        <!-- Действия -->
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="() => OnMarkHelpful.InvokeAsync(Review.Id)">
+                👍 Полезно (@Review.HelpfulCount)
+            </button>
+        </div>
+
+        <!-- Ответ автора -->
+        @if (!string.IsNullOrEmpty(Review.AuthorResponse))
+        {
+            <div class="alert alert-info mt-3 py-2 px-3">
+                <strong class="text-primary">Ответ автора:</strong>
+                <p class="mb-0">@Review.AuthorResponse</p>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public WorkReview Review { get; set; } = null!;
+
+    [Parameter]
+    public User? CurrentUser { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnMarkHelpful { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnApprove { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnHide { get; set; }
+
+    private string GetRoleBadge(UserRole role) => role switch
+    {
+        UserRole.Admin => "Админ",
+        UserRole.Moderator => "Модератор",
+        UserRole.Author => "Автор",
+        _ => "Читатель"
+    };
+}

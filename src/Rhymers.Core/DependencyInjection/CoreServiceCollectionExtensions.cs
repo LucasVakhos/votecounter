@@ -44,6 +44,9 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<ContestRulesAutoFixService>();
         services.AddSingleton<WorkSpellChecker>();
 
+        // Discussion and review services
+        services.AddScoped<DiscussionService>();
+
         // Persistence service
         services.AddScoped<PersistenceService>();
 
