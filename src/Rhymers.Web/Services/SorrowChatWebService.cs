@@ -159,6 +159,15 @@ public class SorrowChatWebService
         var sanction = await _sorrowService.GetActiveSanctionAsync(contestId, userName);
         return await Task.FromResult(sanction);
     }
+
+    /// <summary>
+    /// Отправить объявление в чат о применении санкции
+    /// </summary>
+    public async Task<ContestSorrowMessage> PostSanctionAnnouncementAsync(string contestId, string violatedUserName, SanctionType sanctionType, string? reason = null)
+    {
+        var announcement = await _sorrowService.PostSanctionAnnouncementAsync(contestId, violatedUserName, sanctionType, reason);
+        return await Task.FromResult(announcement);
+    }
 }
 
 /// <summary>

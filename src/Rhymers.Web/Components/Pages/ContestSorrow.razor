@@ -180,20 +180,37 @@
             {
                 @foreach (var msg in messages)
                 {
-                    <div class="card mb-3">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-start mb-2">
+                    @if (msg.AuthorName == "Администрация")
+                    {
+                        <!-- Объявление администрации -->
+                        <div class="alert alert-warning border-3 mb-3" role="alert">
+                            <div class="d-flex justify-content-between align-items-start">
                                 <div>
-                                    <h6 class="card-subtitle mb-1">
-                                        <strong>@msg.AuthorName</strong>
-                                        <span class="badge @GetRoleBadgeClass(msg.AuthorRole)">@GetRoleDisplay(msg.AuthorRole)</span>
+                                    <h6 class="alert-heading mb-2">
+                                        ⚖️ <strong>ОБЪЯВЛЕНИЕ АДМИНИСТРАЦИИ</strong>
                                     </h6>
-                                    <small class="text-muted">@GetSorrowTypeEmoji(msg.Type) @msg.Type.ToString()</small>
+                                    <p class="mb-2">@msg.Content</p>
+                                    <small class="text-muted">@GetTimeDisplay(msg.CreatedAt)</small>
                                 </div>
-                                <small class="text-muted">@GetTimeDisplay(msg.CreatedAt)</small>
                             </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <div>
+                                        <h6 class="card-subtitle mb-1">
+                                            <strong>@msg.AuthorName</strong>
+                                            <span class="badge @GetRoleBadgeClass(msg.AuthorRole)">@GetRoleDisplay(msg.AuthorRole)</span>
+                                        </h6>
+                                        <small class="text-muted">@GetSorrowTypeEmoji(msg.Type) @msg.Type.ToString()</small>
+                                    </div>
+                                    <small class="text-muted">@GetTimeDisplay(msg.CreatedAt)</small>
+                                </div>
 
-                            <p class="card-text">@msg.Content</p>
+                                <p class="card-text">@msg.Content</p>
 
                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <button class="btn btn-sm btn-outline-heart" @onclick="async () => await AddEmpathyAsync(msg.Id)">
@@ -392,8 +409,7 @@
                                 }
                             }
                         </div>
-                    </div>
-                }
+                    </div>                    }                }
             }
 
             <h3 class="mt-5">📝 Рецензии на работы</h3>
@@ -779,6 +795,10 @@
             {
                 var sanctionReason = sanctionReasons.GetValueOrDefault(messageId, "");
                 await SorrowService.ApplySanctionAsync(violation.Id, sanctionType, currentUser.DisplayName, sanctionReason);
+                
+                // Отправляем объявление в чат
+                await SorrowService.PostSanctionAnnouncementAsync(contestId, violation.UserName, sanctionType, sanctionReason);
+                
                 message = $"✅ Нарушение зафиксировано. Санкция применена: {GetSanctionDisplay(sanctionType)}";
             }
             else

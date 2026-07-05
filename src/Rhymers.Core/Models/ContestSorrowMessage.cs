@@ -99,6 +99,9 @@ public enum SorrowType
     /// <summary>Впечатления от других работ</summary>
     Impressions = 6,
     
+    /// <summary>Системное объявление администрации</summary>
+    Announcement = 7,
+    
     /// <summary>Жизненные обстоятельства, влияющие на творчество</summary>
     LifeCircumstances = 7
 }

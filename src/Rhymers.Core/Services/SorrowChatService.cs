@@ -331,6 +331,43 @@ public sealed class SorrowChatService
 
         return sanction;
     }
+
+    /// <summary>
+    /// Отправить объявление в чат о применении санкции
+    /// </summary>
+    public async Task<ContestSorrowMessage> PostSanctionAnnouncementAsync(string contestId, string violatedUserName, SanctionType sanctionType, string? reason = null)
+    {
+        var sanctionDisplay = sanctionType switch
+        {
+            SanctionType.OneDay => "на 1 день",
+            SanctionType.OneWeek => "на 7 дней",
+            SanctionType.OneMonth => "на 30 дней",
+            SanctionType.Permanent => "на неопределённый срок",
+            _ => "по решению администрации"
+        };
+
+        var reasonText = string.IsNullOrEmpty(reason) ? "" : $" Причина: {reason}";
+        var announcementText = $"⚖️ ОБЪЯВЛЕНИЕ: Пользователю @{violatedUserName} применена санкция {sanctionDisplay} за нарушение правил чата.{reasonText}";
+
+        var announcement = new ContestSorrowMessage
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            ContestId = contestId,
+            AuthorName = "Администрация",
+            AuthorRole = UserRole.Admin,
+            Content = announcementText,
+            Type = SorrowType.Announcement,
+            CreatedAt = DateTime.UtcNow,
+            IsApproved = true, // Системные сообщения одобрены автоматически
+            IsHidden = false,
+            EmpathyCount = 0,
+            ParentMessageId = null
+        };
+
+        _context.SorrowMessages.Add(announcement);
+        await _context.SaveChangesAsync();
+        return announcement;
+    }
 }
 
 /// <summary>
