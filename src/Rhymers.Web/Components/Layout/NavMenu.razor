@@ -99,8 +99,17 @@
             </div>
         }
 
-        @if (currentUser?.Role == UserRole.Admin)
+        @if (currentUser?.Role >= UserRole.Admin)
         {
+            @if (currentUser?.Role == UserRole.Developer)
+            {
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="role-management">
+                        <span class="oi oi-people" aria-hidden="true"></span> 👨‍💻 Управление ролями
+                    </NavLink>
+                </div>
+            }
+
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="admin-panel">
                     <span class="oi oi-task" aria-hidden="true"></span> 👨‍💼 Админ панель
@@ -174,6 +183,7 @@
         UserRole.Author => "bg-success",
         UserRole.Moderator => "bg-warning",
         UserRole.Admin => "bg-danger",
+        UserRole.Developer => "bg-dark",
         _ => "bg-secondary"
     };
 
@@ -183,6 +193,7 @@
         UserRole.Author => "✍️ Автор",
         UserRole.Moderator => "🔍 Модератор",
         UserRole.Admin => "👨‍💼 Admin",
+        UserRole.Developer => "👨‍💻 Developer",
         _ => "?"
     };
 }

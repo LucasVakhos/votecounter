@@ -1,0 +1,298 @@
+@page "/role-management"
+@using Rhymers.Web.Services
+@using Rhymers.Core.Models
+@inject AuthorizationWebService AuthService
+@inject NavigationManager NavigationManager
+
+<div class="container-fluid mt-4">
+    @if (currentUser?.Role < UserRole.Developer)
+    {
+        <div class="alert alert-danger">
+            <strong>❌ Доступ запрещен</strong> - Только разработчики имеют доступ к управлению ролями
+        </div>
+        return;
+    }
+
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h2>👨‍💻 Управление ролями пользователей</h2>
+            <p class="text-muted">Разработчик имеет полный контроль над назначением ролей</p>
+        </div>
+    </div>
+
+    <!-- Фильтр и поиск -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4">
+                    <label class="form-label">Поиск пользователя</label>
+                    <input type="text" class="form-control" placeholder="Имя пользователя..." 
+                           @bind="searchTerm" @bind:event="oninput" @onkeyup="ApplyFilters" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Фильтр по роли</label>
+                    <select class="form-select" @onchange="e => { filterRole = (UserRole?)int.Parse(e.Value?.ToString() ?? string.Empty); ApplyFilters(); }">
+                        <option value="">-- Все роли --</option>
+                        <option value="0">👥 Reader</option>
+                        <option value="1">📝 Author</option>
+                        <option value="2">🔍 Moderator</option>
+                        <option value="3">⚙️ Admin</option>
+                        <option value="4">👨‍💻 Developer</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">&nbsp;</label>
+                    <button class="btn btn-outline-secondary w-100" @onclick="ResetFilters">
+                        🔄 Сброс
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Статистика -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">Всего</h5>
+                    <h2>@allUsers.Count</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">Admin'ов</h5>
+                    <h2>@allUsers.Count(u => u.Role == UserRole.Admin)</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">Модераторов</h5>
+                    <h2>@allUsers.Count(u => u.Role == UserRole.Moderator)</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">Developer'ов</h5>
+                    <h2>@allUsers.Count(u => u.Role == UserRole.Developer)</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Таблица пользователей -->
+    <div class="table-responsive">
+        <table class="table table-hover table-striped">
+            <thead class="table-dark">
+                <tr>
+                    <th>Пользователь</th>
+                    <th>Текущая роль</th>
+                    <th>Изменить на</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (filteredUsers.Count == 0)
+                {
+                    <tr>
+                        <td colspan="4" class="text-center text-muted">Пользователи не найдены</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var user in filteredUsers)
+                    {
+                        <tr>
+                            <td>
+                                <strong>@user.DisplayName</strong>
+                                <br />
+                                <small class="text-muted">@user.Id</small>
+                            </td>
+                            <td>
+                                <span class="badge @GetRoleBadgeClass(user.Role)">
+                                    @GetRoleDisplay(user.Role)
+                                </span>
+                            </td>
+                            <td>
+                                @if (expandedUserId == user.Id)
+                                {
+                                    <select class="form-select form-select-sm" @onchange="e => selectedNewRole = (UserRole)int.Parse(e.Value?.ToString() ?? string.Empty)">
+                                        <option value="0">👥 Reader</option>
+                                        <option value="1">📝 Author</option>
+                                        <option value="2">🔍 Moderator</option>
+                                        <option value="3">⚙️ Admin</option>
+                                        <option value="4">👨‍💻 Developer</option>
+                                    </select>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </td>
+                            <td>
+                                @if (expandedUserId == user.Id)
+                                {
+                                    <button class="btn btn-sm btn-success" @onclick="() => SaveRole(user)" disabled="@savingRole">
+                                        @if (savingRole)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                        }
+                                        💾 Сохранить
+                                    </button>
+                                    <button class="btn btn-sm btn-secondary" @onclick="() => expandedUserId = string.Empty">
+                                        ✖️ Отмена
+                                    </button>
+                                }
+                                else
+                                {
+                                    @if (user.Id != currentUser.Id)
+                                    {
+                                        <button class="btn btn-sm btn-warning" @onclick="() => ToggleEdit(user.Id, user.Role)">
+                                            ✏️ Изменить
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <small class="text-muted">Это вы (Developer)</small>
+                                    }
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Сообщение об ошибке/успехе -->
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert alert-@(isSuccess ? "success" : "danger") mt-3 alert-dismissible fade show" role="alert">
+            @message
+            <button type="button" class="btn-close" @onclick="() => message = string.Empty" aria-label="Закрыть"></button>
+        </div>
+    }
+</div>
+
+@code {
+    private User? currentUser;
+    private List<User> allUsers = new();
+    private List<User> filteredUsers = new();
+    private string searchTerm = string.Empty;
+    private UserRole? filterRole;
+    private string expandedUserId = string.Empty;
+    private UserRole selectedNewRole = UserRole.Reader;
+    private string message = string.Empty;
+    private bool isSuccess = false;
+    private bool savingRole = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+
+        if (currentUser?.Role < UserRole.Developer)
+        {
+            return;
+        }
+
+        await LoadUsers();
+    }
+
+    private async Task LoadUsers()
+    {
+        try
+        {
+            allUsers = await AuthService.GetAllUsersAsync();
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка загрузки пользователей: {ex.Message}";
+            isSuccess = false;
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        filteredUsers = allUsers
+            .Where(u =>
+                (string.IsNullOrEmpty(searchTerm) || u.DisplayName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)) &&
+                (!filterRole.HasValue || u.Role == filterRole)
+            )
+            .OrderByDescending(u => u.Role)
+            .ThenBy(u => u.DisplayName)
+            .ToList();
+    }
+
+    private void ResetFilters()
+    {
+        searchTerm = string.Empty;
+        filterRole = null;
+        ApplyFilters();
+    }
+
+    private void ToggleEdit(string userId, UserRole currentRole)
+    {
+        expandedUserId = userId;
+        selectedNewRole = currentRole;
+    }
+
+    private async Task SaveRole(User user)
+    {
+        if (selectedNewRole == user.Role)
+        {
+            message = "Роль не изменилась";
+            isSuccess = false;
+            expandedUserId = string.Empty;
+            return;
+        }
+
+        try
+        {
+            savingRole = true;
+            await AuthService.UpdateUserRoleAsync(user.Id, selectedNewRole);
+
+            user.Role = selectedNewRole;
+            ApplyFilters();
+
+            message = $"✅ Роль пользователя '{user.DisplayName}' изменена на '{GetRoleDisplay(selectedNewRole)}'";
+            isSuccess = true;
+            expandedUserId = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка: {ex.Message}";
+            isSuccess = false;
+        }
+        finally
+        {
+            savingRole = false;
+        }
+    }
+
+    private string GetRoleDisplay(UserRole role) => role switch
+    {
+        UserRole.Reader => "👥 Reader",
+        UserRole.Author => "📝 Author",
+        UserRole.Moderator => "🔍 Moderator",
+        UserRole.Admin => "⚙️ Admin",
+        UserRole.Developer => "👨‍💻 Developer",
+        _ => "Unknown"
+    };
+
+    private string GetRoleBadgeClass(UserRole role) => role switch
+    {
+        UserRole.Reader => "bg-secondary",
+        UserRole.Author => "bg-info",
+        UserRole.Moderator => "bg-warning text-dark",
+        UserRole.Admin => "bg-danger",
+        UserRole.Developer => "bg-dark",
+        _ => "bg-secondary"
+    };
+}

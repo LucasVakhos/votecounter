@@ -256,4 +256,27 @@ public sealed class RoleAuthorizationService
 
         return _context.Users.Where(u => u.Role == UserRole.Moderator && u.IsActive).ToList();
     }
+
+    /// <summary>
+    /// Получить всех пользователей (Developer only)
+    /// </summary>
+    public List<User> GetAllUsersForDeveloper()
+    {
+        return _context.Users.OrderByDescending(u => u.Role).ThenBy(u => u.DisplayName).ToList();
+    }
+
+    /// <summary>
+    /// Изменить роль пользователя (Developer only)
+    /// </summary>
+    public bool UpdateUserRole(string userId, UserRole newRole)
+    {
+        var user = _context.Users.FirstOrDefault(u => u.Id == userId);
+        if (user == null)
+            return false;
+
+        user.Role = newRole;
+        _context.Users.Update(user);
+        _context.SaveChanges();
+        return true;
+    }
 }

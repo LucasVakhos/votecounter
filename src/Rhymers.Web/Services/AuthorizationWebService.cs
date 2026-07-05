@@ -131,4 +131,22 @@ public sealed class AuthorizationWebService
         var moderators = _authService.GetAllModerators(adminUser);
         return await Task.FromResult(moderators);
     }
+
+    /// <summary>
+    /// Получить всех пользователей (Developer only)
+    /// </summary>
+    public async Task<List<User>> GetAllUsersAsync()
+    {
+        var users = _authService.GetAllUsersForDeveloper();
+        return await Task.FromResult(users);
+    }
+
+    /// <summary>
+    /// Изменить роль пользователя (Developer only)
+    /// </summary>
+    public async Task<bool> UpdateUserRoleAsync(string userId, UserRole newRole)
+    {
+        var result = _authService.UpdateUserRole(userId, newRole);
+        return await Task.FromResult(result);
+    }
 }
