@@ -5,7 +5,7 @@ export function getComments(contestId: string) {
   return (
     db
       .prepare(
-        "SELECT id, contest_id, author_name, author_role, content, parent_comment_id, likes_count, is_approved, is_hidden, created_at FROM contest_comments WHERE contest_id = ? ORDER BY created_at DESC"
+        "SELECT id, contest_id, author_name, author_role, content, parent_comment_id, likes_count, is_approved, is_hidden, is_deleted, deleted_at, deleted_by, created_at FROM contest_comments WHERE contest_id = ? ORDER BY created_at DESC"
       )
       .all(contestId) as CommentRow[]
   ).map(mapComment);
@@ -26,7 +26,7 @@ export function addComment(contestId: string, user: User, content: string, paren
   };
 
   db.prepare(
-    "INSERT INTO contest_comments(id, contest_id, author_name, author_role, content, parent_comment_id, likes_count, is_approved, is_hidden, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO contest_comments(id, contest_id, author_name, author_role, content, parent_comment_id, likes_count, is_approved, is_hidden, is_deleted, deleted_at, deleted_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).run(
     comment.id,
     comment.contestId,
@@ -37,6 +37,9 @@ export function addComment(contestId: string, user: User, content: string, paren
     comment.likesCount,
     1,
     0,
+    0,
+    null,
+    null,
     comment.createdAt
   );
 
@@ -56,6 +59,30 @@ export function approveComment(commentId: string): boolean {
 export function hideComment(commentId: string): boolean {
   const result = db.prepare("UPDATE contest_comments SET is_hidden = 1 WHERE id = ?").run(commentId);
   return result.changes > 0;
+}
+
+export type SoftDeleteCommentResult = "ok" | "not_found" | "forbidden_target";
+
+export function softDeleteMortalComment(commentId: string, moderatorName: string): SoftDeleteCommentResult {
+  const target = db
+    .prepare("SELECT author_role FROM contest_comments WHERE id = ?")
+    .get(commentId) as { author_role: User["role"] } | undefined;
+
+  if (!target) {
+    return "not_found";
+  }
+
+  if (target.author_role === "moderator" || target.author_role === "admin") {
+    return "forbidden_target";
+  }
+
+  const result = db
+    .prepare(
+      "UPDATE contest_comments SET is_deleted = 1, is_hidden = 1, is_approved = 0, deleted_at = ?, deleted_by = ? WHERE id = ? AND is_deleted = 0"
+    )
+    .run(new Date().toISOString(), moderatorName, commentId);
+
+  return result.changes > 0 ? "ok" : "not_found";
 }
 
 export function getReviews(contestId: string, workNumber: number) {

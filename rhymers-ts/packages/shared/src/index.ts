@@ -98,6 +98,9 @@ export interface ContestComment {
   likesCount: number;
   isApproved: boolean;
   isHidden: boolean;
+  isDeleted: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
   createdAt: string;
 }
 

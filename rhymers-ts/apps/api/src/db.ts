@@ -53,6 +53,9 @@ export type CommentRow = {
   likes_count: number;
   is_approved: 0 | 1;
   is_hidden: 0 | 1;
+  is_deleted: 0 | 1;
+  deleted_at: string | null;
+  deleted_by: string | null;
   created_at: string;
 };
 
@@ -115,16 +118,20 @@ export function mapVote(row: VoteRow): VoteEntry {
 }
 
 export function mapComment(row: CommentRow): ContestComment {
+  const isDeleted = row.is_deleted === 1;
   return {
     id: row.id,
     contestId: row.contest_id,
     authorName: row.author_name,
     authorRole: row.author_role,
-    content: row.content,
+    content: isDeleted ? "[Deleted by moderation]" : row.content,
     parentCommentId: row.parent_comment_id ?? undefined,
     likesCount: row.likes_count,
     isApproved: row.is_approved === 1,
     isHidden: row.is_hidden === 1,
+    isDeleted,
+    deletedAt: row.deleted_at ?? undefined,
+    deletedBy: row.deleted_by ?? undefined,
     createdAt: row.created_at
   };
 }

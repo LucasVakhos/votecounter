@@ -31,18 +31,21 @@ test("migration versions are continuous", () => {
 });
 
 test("migration down/up smoke test", () => {
-  assert.equal(getCurrentSchemaVersion(db), 2);
+  assert.equal(getCurrentSchemaVersion(db), 3);
 
   const reverted = migrateDown(db, 1);
   assert.equal(reverted, 1);
-  assert.equal(getCurrentSchemaVersion(db), 1);
+  assert.equal(getCurrentSchemaVersion(db), 2);
 
   const applied = runMigrations(db);
   assert.equal(applied, 1);
-  assert.equal(getCurrentSchemaVersion(db), 2);
+  assert.equal(getCurrentSchemaVersion(db), 3);
 
   const voteIndexes = db.prepare("PRAGMA index_list('votes')").all() as Array<{ name: string }>;
   assert.ok(voteIndexes.some((x) => x.name === "idx_votes_contest_id"));
+
+  const commentIndexes = db.prepare("PRAGMA index_list('contest_comments')").all() as Array<{ name: string }>;
+  assert.ok(commentIndexes.some((x) => x.name === "idx_contest_comments_is_deleted"));
 });
 
 test("health endpoint exposes sqlite storage", async () => {
@@ -52,7 +55,7 @@ test("health endpoint exposes sqlite storage", async () => {
   assert.equal(res.status, 200);
   assert.equal(res.body.ok, true);
   assert.equal(res.body.storage, "sqlite");
-  assert.equal(res.body.schemaVersion, 2);
+  assert.equal(res.body.schemaVersion, 3);
 });
 
 test("contest create + list + works flow", async () => {
@@ -94,8 +97,8 @@ test("discussion comments and moderation flow", async () => {
 
   const created = await request(app)
     .post("/api/discussions/contests/c1/comments")
-    .set("X-User-Name", "ModUser")
-    .set("X-User-Role", "moderator")
+    .set("X-User-Name", "Poet")
+    .set("X-User-Role", "author")
     .send({ content: "Hello" });
 
   assert.equal(created.status, 201);
@@ -110,8 +113,38 @@ test("discussion comments and moderation flow", async () => {
     .set("X-User-Role", "moderator");
   assert.equal(hide.status, 200);
 
+  const softDelete = await request(app)
+    .post(`/api/discussions/comments/${commentId}/delete`)
+    .set("X-User-Name", "ModUser")
+    .set("X-User-Role", "moderator");
+  assert.equal(softDelete.status, 200);
+
   const comments = await request(app).get("/api/discussions/contests/c1/comments");
   assert.equal(comments.status, 200);
   assert.equal(comments.body.length, 1);
   assert.equal(comments.body[0].isHidden, true);
+  assert.equal(comments.body[0].isDeleted, true);
+  assert.equal(comments.body[0].deletedBy, "ModUser");
+  assert.equal(comments.body[0].content, "[Deleted by moderation]");
+});
+
+test("moderator cannot soft-delete moderator comment", async () => {
+  const app = createApp();
+
+  const created = await request(app)
+    .post("/api/discussions/contests/c1/comments")
+    .set("X-User-Name", "AnotherMod")
+    .set("X-User-Role", "moderator")
+    .send({ content: "Moderator note" });
+
+  assert.equal(created.status, 201);
+  const commentId = created.body.id as string;
+
+  const softDelete = await request(app)
+    .post(`/api/discussions/comments/${commentId}/delete`)
+    .set("X-User-Name", "MainMod")
+    .set("X-User-Role", "moderator");
+
+  assert.equal(softDelete.status, 403);
+  assert.equal(softDelete.body.error, "Cannot delete moderator/admin comments");
 });

@@ -13,6 +13,7 @@ import {
   hideReview,
   likeComment,
   markReviewHelpful,
+  softDeleteMortalComment,
   setAuthorResponse
 } from "../repositories/discussions-repository.js";
 
@@ -72,6 +73,31 @@ discussionsRouter.post("/comments/:commentId/hide", (req, res) => {
     res.json({ ok: true });
     return;
   }
+  res.status(404).json({ error: "Comment not found" });
+});
+
+discussionsRouter.post("/comments/:commentId/delete", (req, res) => {
+  const user = getCurrentUser(req);
+  if (!requireRole(user, "moderator")) {
+    res.status(403).json({ error: "Moderator role required" });
+    return;
+  }
+
+  if (!user) {
+    res.status(403).json({ error: "Moderator role required" });
+    return;
+  }
+
+  const result = softDeleteMortalComment(req.params.commentId, user.displayName);
+  if (result === "ok") {
+    res.json({ ok: true });
+    return;
+  }
+  if (result === "forbidden_target") {
+    res.status(403).json({ error: "Cannot delete moderator/admin comments" });
+    return;
+  }
+
   res.status(404).json({ error: "Comment not found" });
 });
 
