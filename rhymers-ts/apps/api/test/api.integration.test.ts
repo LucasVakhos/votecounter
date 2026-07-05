@@ -26,7 +26,7 @@ test("health endpoint exposes sqlite storage", async () => {
   assert.equal(res.status, 200);
   assert.equal(res.body.ok, true);
   assert.equal(res.body.storage, "sqlite");
-  assert.equal(res.body.schemaVersion, 1);
+  assert.equal(res.body.schemaVersion, 2);
 });
 
 test("contest create + list + works flow", async () => {

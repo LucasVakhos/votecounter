@@ -87,6 +87,24 @@ DROP TABLE IF EXISTS votes;
 DROP TABLE IF EXISTS contest_works;
 DROP TABLE IF EXISTS contests;
 `
+  },
+  {
+    version: 2,
+    name: "add_indexes",
+    up: `
+CREATE INDEX IF NOT EXISTS idx_contest_works_contest_id ON contest_works(contest_id);
+CREATE INDEX IF NOT EXISTS idx_votes_contest_id ON votes(contest_id);
+CREATE INDEX IF NOT EXISTS idx_contest_comments_contest_id ON contest_comments(contest_id);
+CREATE INDEX IF NOT EXISTS idx_work_reviews_contest_work ON work_reviews(contest_id, work_number);
+CREATE INDEX IF NOT EXISTS idx_sorrow_messages_contest_id ON sorrow_messages(contest_id);
+`,
+    down: `
+DROP INDEX IF EXISTS idx_sorrow_messages_contest_id;
+DROP INDEX IF EXISTS idx_work_reviews_contest_work;
+DROP INDEX IF EXISTS idx_contest_comments_contest_id;
+DROP INDEX IF EXISTS idx_votes_contest_id;
+DROP INDEX IF EXISTS idx_contest_works_contest_id;
+`
   }
 ];
 
@@ -125,6 +143,45 @@ export function runMigrations(db: Database.Database): number {
   }
 
   return appliedCount;
+}
+
+export function getMigrations(): Migration[] {
+  return [...migrations].sort((a, b) => a.version - b.version);
+}
+
+export function getAppliedMigrationVersions(db: Database.Database): number[] {
+  ensureMigrationsTable(db);
+  return (db.prepare("SELECT version FROM schema_migrations ORDER BY version ASC").all() as Array<{ version: number }>).map((x) => x.version);
+}
+
+export function migrateDown(db: Database.Database, steps = 1): number {
+  ensureMigrationsTable(db);
+  if (steps <= 0) {
+    return 0;
+  }
+
+  const applied = getAppliedMigrationVersions(db);
+  const candidates = applied.slice(-steps).reverse();
+  const byVersion = new Map(getMigrations().map((m) => [m.version, m]));
+  const remove = db.prepare("DELETE FROM schema_migrations WHERE version = ?");
+
+  let reverted = 0;
+  for (const version of candidates) {
+    const migration = byVersion.get(version);
+    if (!migration) {
+      throw new Error(`Missing migration definition for version ${version}`);
+    }
+
+    const tx = db.transaction(() => {
+      db.exec(migration.down);
+      remove.run(migration.version);
+    });
+
+    tx();
+    reverted += 1;
+  }
+
+  return reverted;
 }
 
 export function getCurrentSchemaVersion(db: Database.Database): number {

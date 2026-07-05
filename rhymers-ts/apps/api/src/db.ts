@@ -1,6 +1,5 @@
 import Database from "better-sqlite3";
-import fs from "node:fs";
-import path from "node:path";
+import { dbFile, ensureDataDir } from "./db-config.js";
 import { getCurrentSchemaVersion, runMigrations } from "./migrations.js";
 import type {
   Contest,
@@ -12,10 +11,8 @@ import type {
   WorkReview
 } from "@rhymers/shared";
 
-export const dataDir = path.resolve(process.cwd(), "data");
-export const dbFile = path.join(dataDir, "rhymers.db");
-
-fs.mkdirSync(dataDir, { recursive: true });
+ensureDataDir();
+export { dbFile };
 
 export const db = new Database(dbFile);
 db.pragma("journal_mode = WAL");
