@@ -1,0 +1,62 @@
+name: Rhymers TS Release Quality
+
+on:
+  pull_request:
+    paths:
+      - "rhymers-ts/**"
+      - ".github/workflows/rhymers-ts-release-quality.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "rhymers-ts/**"
+      - ".github/workflows/rhymers-ts-release-quality.yml"
+
+jobs:
+  release-quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rhymers-ts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: rhymers-ts/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare artifact dir
+        run: mkdir -p .artifacts
+
+      - name: Typecheck
+        run: npm run typecheck 2>&1 | tee .artifacts/typecheck.log
+
+      - name: Build
+        run: npm run build 2>&1 | tee .artifacts/build.log
+
+      - name: API tests
+        run: npm run test 2>&1 | tee .artifacts/test.log
+
+      - name: Verify migrations
+        run: npm run migrate:verify 2>&1 | tee .artifacts/migrate-verify.log
+
+      - name: Migration dry-run
+        run: npm run migrate:dry-run 2>&1 | tee .artifacts/migrate-dry-run.log
+
+      - name: Security audit (report)
+        continue-on-error: true
+        run: npm audit --audit-level=high 2>&1 | tee .artifacts/audit.log
+
+      - name: Upload quality logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rhymers-ts-release-quality-logs
+          path: rhymers-ts/.artifacts/
