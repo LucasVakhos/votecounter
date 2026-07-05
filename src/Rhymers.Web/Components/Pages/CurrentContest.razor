@@ -1,0 +1,99 @@
+@page "/current-contest"
+@using Rhymers.Core.Models
+@using Rhymers.Web.Services
+@inject ContestService ContestService
+@inject NavigationManager NavigationManager
+
+<div class="container mt-4">
+    <h1>Текущий конкурс</h1>
+
+    @if (isLoading)
+    {
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Загрузка...</span>
+        </div>
+    }
+    else if (contest == null)
+    {
+        <div class="alert alert-info">Активный конкурс пока не найден.</div>
+    }
+    else
+    {
+        <div class="card mb-3">
+            <div class="card-body">
+                <h4 class="mb-1">@contest.Name</h4>
+                <div class="text-muted">Конкурс №@contest.Number</div>
+                <div class="mt-2">
+                    <span class="badge text-bg-primary">@ContestService.GetContestStageTitle(ContestService.GetContestStage(contest))</span>
+                </div>
+            </div>
+        </div>
+
+        @if (approvedSubmissions.Count == 0)
+        {
+            <div class="alert alert-secondary">Пока нет одобренных работ.</div>
+        }
+        else
+        {
+            @for (var i = 0; i < approvedSubmissions.Count; i++)
+            {
+                var item = approvedSubmissions[i];
+                var displayNo = item.Work.Number > 0 ? item.Work.Number : i + 1;
+
+                <div class="card mb-2">
+                    <div class="card-body">
+                        <div><strong>№</strong> @displayNo</div>
+                        <div><strong>Тема:</strong> @item.Work.Topic - @GetAuthorDisplay(item.Work.Author)</div>
+                        <div><strong>Подзаголовок:</strong> @(string.IsNullOrWhiteSpace(item.Work.Subtitle) ? "-" : item.Work.Subtitle)</div>
+                        <div class="mt-2"><strong>Текст работы:</strong></div>
+                        <div style="white-space: pre-wrap;">@item.Work.Content</div>
+                    </div>
+                </div>
+
+                <div class="text-muted">-----------</div>
+            }
+        }
+
+        <div class="mt-3">
+            <button class="btn btn-success btn-lg" @onclick="GoToSubmit">
+                подать
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    private Contest? contest;
+    private List<WorkSubmission> approvedSubmissions = new();
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        contest = await ContestService.GetCurrentContestAsync();
+        if (contest != null)
+            approvedSubmissions = await ContestService.GetApprovedWorkSubmissionsAsync(contest.Id);
+
+        isLoading = false;
+    }
+
+    private string GetAuthorDisplay(string author)
+    {
+        if (contest == null)
+            return "Автор скрыт";
+
+        var stage = ContestService.GetContestStage(contest);
+        var hideAuthor = stage is ContestStage.TopicReception or ContestStage.WorkReception or ContestStage.VotingOpen;
+        if (hideAuthor)
+            return "автор скрыт до объявления результатов";
+
+        return string.IsNullOrWhiteSpace(author) ? "автор не указан" : author;
+    }
+
+    private void GoToSubmit()
+    {
+        if (contest == null)
+            return;
+
+        NavigationManager.NavigateTo($"/submit-work/{contest.Id}");
+    }
+}

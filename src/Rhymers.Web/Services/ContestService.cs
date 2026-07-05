@@ -35,6 +35,32 @@ public class ContestService
         return await _context.Contests.FirstOrDefaultAsync(c => c.Id == id);
     }
 
+    public async Task<Contest?> GetCurrentContestAsync()
+    {
+        await ApplyAutomaticStageSwitchesAsync();
+
+        return await _context.Contests
+            .Where(c => c.IsActive)
+            .OrderByDescending(c => c.StageUpdatedAt)
+            .ThenByDescending(c => c.UpdatedAt)
+            .ThenByDescending(c => c.CreatedAt)
+            .FirstOrDefaultAsync()
+            ?? await _context.Contests
+                .OrderByDescending(c => c.StageUpdatedAt)
+                .ThenByDescending(c => c.UpdatedAt)
+                .ThenByDescending(c => c.CreatedAt)
+                .FirstOrDefaultAsync();
+    }
+
+    public async Task<List<WorkSubmission>> GetApprovedWorkSubmissionsAsync(string contestId)
+    {
+        return await _context.Submissions
+            .Where(s => s.ContestId == contestId && s.Status == WorkStatus.Approved)
+            .OrderBy(s => s.SubmittedAt)
+            .ThenBy(s => s.Id)
+            .ToListAsync();
+    }
+
     /// <summary>
     /// Создать новый конкурс
     /// </summary>
