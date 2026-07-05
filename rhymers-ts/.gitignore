@@ -2,3 +2,7 @@ node_modules
 dist
 .turbo
 .DS_Store
+apps/api/data
+*.db
+*.db-shm
+*.db-wal

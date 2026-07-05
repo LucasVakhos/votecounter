@@ -1,6 +1,6 @@
 import express from "express";
 import type { ContestResultsReport, ImportResult, VoteEntry } from "@rhymers/shared";
-import { db, mapVote, type VoteRow } from "../db.js";
+import { getResults, getVotesByContest, insertVotes } from "../repositories/votes-repository.js";
 import { parseVoteText } from "../vote-parser.js";
 
 export const votesRouter = express.Router();
@@ -33,10 +33,7 @@ votesRouter.post("/import", (req, res) => {
     }
   }
 
-  const insertVote = db.prepare("INSERT INTO votes(id, contest_id, voter_name, work_number, points) VALUES (?, ?, ?, ?, ?)");
-  for (const vote of imported) {
-    insertVote.run(vote.id, vote.contestId, vote.voterName, vote.workNumber, vote.points);
-  }
+  insertVotes(imported);
 
   res.json(parsed);
 });
@@ -67,11 +64,7 @@ votesRouter.post("/validate", (req, res) => {
 });
 
 votesRouter.get("/contest/:contestId", (req, res) => {
-  const rows = db
-    .prepare("SELECT id, contest_id, voter_name, work_number, points FROM votes WHERE contest_id = ?")
-    .all(req.params.contestId) as VoteRow[];
-
-  res.json(rows.map(mapVote));
+  res.json(getVotesByContest(req.params.contestId));
 });
 
 votesRouter.post("/results", (req, res) => {
@@ -81,21 +74,6 @@ votesRouter.post("/results", (req, res) => {
     return;
   }
 
-  const votes = (
-    db.prepare("SELECT id, contest_id, voter_name, work_number, points FROM votes WHERE contest_id = ?").all(contestId) as VoteRow[]
-  ).map(mapVote);
-  const byWork = new Map<number, number>();
-  for (const vote of votes) {
-    byWork.set(vote.workNumber, (byWork.get(vote.workNumber) ?? 0) + vote.points);
-  }
-
-  const report: ContestResultsReport = {
-    contestId,
-    generatedAt: new Date().toISOString(),
-    rows: [...byWork.entries()]
-      .map(([workNumber, totalPoints]) => ({ workNumber, totalPoints }))
-      .sort((a, b) => b.totalPoints - a.totalPoints)
-  };
-
+  const report: ContestResultsReport = getResults(contestId);
   res.json(report);
 });
