@@ -31,3 +31,111 @@ export interface AddSorrowMessageRequest {
   content: string;
   type: SorrowType;
 }
+
+export interface ContestWork {
+  number: number;
+  title: string;
+  authorName?: string;
+}
+
+export interface Contest {
+  id: string;
+  number: string;
+  name: string;
+  hostName: string;
+  startedAt: string;
+  works: ContestWork[];
+}
+
+export interface CreateContestRequest {
+  name: string;
+  hostName?: string;
+}
+
+export interface UpdateContestRequest {
+  name?: string;
+  hostName?: string;
+}
+
+export interface VoteEntry {
+  id: string;
+  contestId: string;
+  voterName: string;
+  workNumber: number;
+  points: number;
+}
+
+export interface ParsedVoteBlock {
+  voterName: string;
+  rawLine: string;
+  entries: Array<{ workNumber: number; points: number }>;
+}
+
+export interface ImportResult {
+  contestId: string;
+  blocks: ParsedVoteBlock[];
+  errors: string[];
+}
+
+export interface ContestRatingRow {
+  workNumber: number;
+  totalPoints: number;
+}
+
+export interface ContestResultsReport {
+  contestId: string;
+  generatedAt: string;
+  rows: ContestRatingRow[];
+}
+
+export interface ContestComment {
+  id: string;
+  contestId: string;
+  authorName: string;
+  authorRole: UserRole;
+  content: string;
+  parentCommentId?: string;
+  likesCount: number;
+  isApproved: boolean;
+  isHidden: boolean;
+  createdAt: string;
+}
+
+export interface AddCommentRequest {
+  content: string;
+  parentCommentId?: string;
+}
+
+export interface WorkReview {
+  id: string;
+  contestId: string;
+  workNumber: number;
+  workTitle: string;
+  reviewerName: string;
+  reviewerRole: UserRole;
+  title: string;
+  content: string;
+  rating?: number;
+  strengths?: string;
+  areasForImprovement?: string;
+  authorResponse?: string;
+  helpfulCount: number;
+  isApproved: boolean;
+  isHidden: boolean;
+  createdAt: string;
+}
+
+export interface AddReviewRequest {
+  title: string;
+  content: string;
+  rating?: number;
+  strengths?: string;
+  areasForImprovement?: string;
+  workTitle?: string;
+}
+
+export interface ReviewStatsResponse {
+  totalReviews: number;
+  averageRating?: number;
+  topReviewsCount: number;
+}
