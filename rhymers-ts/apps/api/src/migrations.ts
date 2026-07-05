@@ -1,4 +1,6 @@
 import type Database from "better-sqlite3";
+import fs from "node:fs";
+import path from "node:path";
 
 export type Migration = {
   version: number;
@@ -7,106 +9,65 @@ export type Migration = {
   down: string;
 };
 
-const migrations: Migration[] = [
-  {
-    version: 1,
-    name: "init_schema",
-    up: `
-CREATE TABLE IF NOT EXISTS contests (
-  id TEXT PRIMARY KEY,
-  number TEXT NOT NULL,
-  name TEXT NOT NULL,
-  host_name TEXT NOT NULL,
-  started_at TEXT NOT NULL
-);
+export const MIGRATIONS_SQL_DIR = path.resolve(process.cwd(), "src", "migrations", "sql");
 
-CREATE TABLE IF NOT EXISTS contest_works (
-  id TEXT PRIMARY KEY,
-  contest_id TEXT NOT NULL,
-  number INTEGER NOT NULL,
-  title TEXT NOT NULL,
-  author_name TEXT,
-  FOREIGN KEY(contest_id) REFERENCES contests(id)
-);
-
-CREATE TABLE IF NOT EXISTS votes (
-  id TEXT PRIMARY KEY,
-  contest_id TEXT NOT NULL,
-  voter_name TEXT NOT NULL,
-  work_number INTEGER NOT NULL,
-  points INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS contest_comments (
-  id TEXT PRIMARY KEY,
-  contest_id TEXT NOT NULL,
-  author_name TEXT NOT NULL,
-  author_role TEXT NOT NULL,
-  content TEXT NOT NULL,
-  parent_comment_id TEXT,
-  likes_count INTEGER NOT NULL,
-  is_approved INTEGER NOT NULL,
-  is_hidden INTEGER NOT NULL,
-  created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS work_reviews (
-  id TEXT PRIMARY KEY,
-  contest_id TEXT NOT NULL,
-  work_number INTEGER NOT NULL,
-  work_title TEXT NOT NULL,
-  reviewer_name TEXT NOT NULL,
-  reviewer_role TEXT NOT NULL,
-  title TEXT NOT NULL,
-  content TEXT NOT NULL,
-  rating INTEGER,
-  strengths TEXT,
-  areas_for_improvement TEXT,
-  author_response TEXT,
-  helpful_count INTEGER NOT NULL,
-  is_approved INTEGER NOT NULL,
-  is_hidden INTEGER NOT NULL,
-  created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS sorrow_messages (
-  id TEXT PRIMARY KEY,
-  contest_id TEXT NOT NULL,
-  author_name TEXT NOT NULL,
-  content TEXT NOT NULL,
-  type TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  empathy_count INTEGER NOT NULL
-);
-`,
-    down: `
-DROP TABLE IF EXISTS sorrow_messages;
-DROP TABLE IF EXISTS work_reviews;
-DROP TABLE IF EXISTS contest_comments;
-DROP TABLE IF EXISTS votes;
-DROP TABLE IF EXISTS contest_works;
-DROP TABLE IF EXISTS contests;
-`
-  },
-  {
-    version: 2,
-    name: "add_indexes",
-    up: `
-CREATE INDEX IF NOT EXISTS idx_contest_works_contest_id ON contest_works(contest_id);
-CREATE INDEX IF NOT EXISTS idx_votes_contest_id ON votes(contest_id);
-CREATE INDEX IF NOT EXISTS idx_contest_comments_contest_id ON contest_comments(contest_id);
-CREATE INDEX IF NOT EXISTS idx_work_reviews_contest_work ON work_reviews(contest_id, work_number);
-CREATE INDEX IF NOT EXISTS idx_sorrow_messages_contest_id ON sorrow_messages(contest_id);
-`,
-    down: `
-DROP INDEX IF EXISTS idx_sorrow_messages_contest_id;
-DROP INDEX IF EXISTS idx_work_reviews_contest_work;
-DROP INDEX IF EXISTS idx_contest_comments_contest_id;
-DROP INDEX IF EXISTS idx_votes_contest_id;
-DROP INDEX IF EXISTS idx_contest_works_contest_id;
-`
+function loadMigrations(): Migration[] {
+  if (!fs.existsSync(MIGRATIONS_SQL_DIR)) {
+    return [];
   }
-];
+
+  const files = fs.readdirSync(MIGRATIONS_SQL_DIR);
+  const re = /^v(\d+)_([a-z0-9_]+)\.(up|down)\.sql$/;
+  const grouped = new Map<number, { name: string; up?: string; down?: string }>();
+
+  for (const fileName of files) {
+    const match = fileName.match(re);
+    if (!match) {
+      continue;
+    }
+
+    const versionToken = match[1];
+    const nameToken = match[2];
+    const directionToken = match[3];
+    if (!versionToken || !nameToken || !directionToken) {
+      continue;
+    }
+
+    const version = Number.parseInt(versionToken, 10);
+    const name = nameToken;
+    const dir = directionToken;
+    const content = fs.readFileSync(path.join(MIGRATIONS_SQL_DIR, fileName), "utf8");
+
+    const existing = grouped.get(version) ?? { name };
+    if (existing.name !== name) {
+      throw new Error(`Mismatched migration names for version ${version}: '${existing.name}' vs '${name}'`);
+    }
+
+    if (dir === "up") {
+      existing.up = content;
+    } else {
+      existing.down = content;
+    }
+
+    grouped.set(version, existing);
+  }
+
+  const migrations: Migration[] = [];
+  for (const [version, value] of grouped.entries()) {
+    if (!value.up || !value.down) {
+      throw new Error(`Migration v${version}_${value.name} must have both .up.sql and .down.sql files`);
+    }
+
+    migrations.push({
+      version,
+      name: value.name,
+      up: value.up,
+      down: value.down
+    });
+  }
+
+  return migrations.sort((a, b) => a.version - b.version);
+}
 
 function ensureMigrationsTable(db: Database.Database): void {
   db.exec(`
@@ -120,6 +81,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 export function runMigrations(db: Database.Database): number {
   ensureMigrationsTable(db);
+  const migrations = loadMigrations();
 
   const applied = new Set<number>(
     (db.prepare("SELECT version FROM schema_migrations ORDER BY version ASC").all() as Array<{ version: number }>).map((x) => x.version)
@@ -146,7 +108,7 @@ export function runMigrations(db: Database.Database): number {
 }
 
 export function getMigrations(): Migration[] {
-  return [...migrations].sort((a, b) => a.version - b.version);
+  return loadMigrations();
 }
 
 export function getAppliedMigrationVersions(db: Database.Database): number[] {

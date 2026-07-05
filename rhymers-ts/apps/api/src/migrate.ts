@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { dbFile, ensureDataDir } from "./db-config.js";
 import {
+  MIGRATIONS_SQL_DIR,
   getAppliedMigrationVersions,
   getCurrentSchemaVersion,
   getMigrations,
@@ -24,22 +25,26 @@ function getNextVersion(): number {
 function createTemplate(nameArg: string | undefined, dryRun: boolean): void {
   const version = getNextVersion();
   const name = sanitizeMigrationName(nameArg ?? `migration_${version}`);
-  const fileName = `v${String(version).padStart(3, "0")}_${name}.sql`;
-  const templatesDir = path.resolve(process.cwd(), "src", "migrations", "templates");
-  const filePath = path.join(templatesDir, fileName);
+  const prefix = `v${String(version).padStart(3, "0")}_${name}`;
+  const upPath = path.join(MIGRATIONS_SQL_DIR, `${prefix}.up.sql`);
+  const downPath = path.join(MIGRATIONS_SQL_DIR, `${prefix}.down.sql`);
 
-  const template = `-- Migration template\n-- version: ${version}\n-- name: ${name}\n\n-- UP\n-- Write forward SQL here\n\n\n-- DOWN\n-- Write rollback SQL here\n`;
+  const upTemplate = `-- Migration v${version} (${name})\n-- UP\n-- Write forward SQL here\n`;
+  const downTemplate = `-- Migration v${version} (${name})\n-- DOWN\n-- Write rollback SQL here\n`;
 
   if (dryRun) {
-    console.log(`Would create template: ${filePath}`);
-    console.log(template);
+    console.log(`Would create: ${upPath}`);
+    console.log(upTemplate);
+    console.log(`Would create: ${downPath}`);
+    console.log(downTemplate);
     return;
   }
 
-  fs.mkdirSync(templatesDir, { recursive: true });
-  fs.writeFileSync(filePath, template, "utf8");
-  console.log(`Created migration template: ${filePath}`);
-  console.log("Next step: add this migration to src/migrations.ts");
+  fs.mkdirSync(MIGRATIONS_SQL_DIR, { recursive: true });
+  fs.writeFileSync(upPath, upTemplate, "utf8");
+  fs.writeFileSync(downPath, downTemplate, "utf8");
+  console.log(`Created migration files:\n- ${upPath}\n- ${downPath}`);
+  console.log("Next step: fill SQL and run migrate:up");
 }
 
 function printStatus(db: Database.Database): void {
