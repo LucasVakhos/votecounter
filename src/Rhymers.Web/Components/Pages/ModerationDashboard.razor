@@ -1,0 +1,317 @@
+@page "/moderation-dashboard"
+@using Rhymers.Web.Services
+@using Rhymers.Core.Models
+@inject AuthorizationWebService AuthService
+@inject SorrowChatWebService SorrowService
+@inject AppealWebService AppealService
+@inject AuditLogWebService AuditService
+
+<div class="container-fluid mt-4">
+    @if (currentUser?.Role < UserRole.Moderator)
+    {
+        <div class="alert alert-danger">
+            <strong>❌ Доступ запрещён</strong> — только для модераторов и выше.
+        </div>
+        return;
+    }
+
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h2>📊 Дашборд модерации</h2>
+            <p class="text-muted mb-0">Актуальная картина по нарушениям, санкциям и апелляциям</p>
+        </div>
+        <div class="col-md-4 text-md-end mt-2 mt-md-0">
+            <div class="btn-group">
+                <button class="btn btn-sm @(daysRange == 7 ? "btn-primary" : "btn-outline-primary")" @onclick="() => ChangeRangeAsync(7)">7 дней</button>
+                <button class="btn btn-sm @(daysRange == 30 ? "btn-primary" : "btn-outline-primary")" @onclick="() => ChangeRangeAsync(30)">30 дней</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="LoadAsync">🔄 Обновить</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-warning h-100">
+                <div class="card-body text-center">
+                    <div class="text-muted">Нарушений за период</div>
+                    <div class="display-6 fw-bold">@violationsInRange</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-danger h-100">
+                <div class="card-body text-center">
+                    <div class="text-muted">Активных санкций</div>
+                    <div class="display-6 fw-bold">@activeSanctionsCount</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-info h-100">
+                <div class="card-body text-center">
+                    <div class="text-muted">Ожидающих апелляций</div>
+                    <div class="display-6 fw-bold">@pendingAppealsCount</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-success h-100">
+                <div class="card-body text-center">
+                    <div class="text-muted">Активных модераторов</div>
+                    <div class="display-6 fw-bold">@activeModeratorsCount</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">📈 Тренд нарушений по дням</div>
+                <div class="card-body">
+                    @if (dailySeries.Count == 0)
+                    {
+                        <div class="text-muted">Нет данных за выбранный период.</div>
+                    }
+                    else
+                    {
+                        @foreach (var item in dailySeries)
+                        {
+                            var width = maxDaily == 0 ? 0 : (int)Math.Round(item.Count * 100.0 / maxDaily);
+                            <div class="mb-2">
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>@item.Date.ToString("dd.MM")</span>
+                                    <strong>@item.Count</strong>
+                                </div>
+                                <div class="progress" style="height: 10px;">
+                                    <div class="progress-bar bg-warning" role="progressbar" style="width: @width%"></div>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">🥧 Распределение типов нарушений</div>
+                <div class="card-body">
+                    @if (typeDistribution.Count == 0)
+                    {
+                        <div class="text-muted">Нарушений нет.</div>
+                    }
+                    else
+                    {
+                        @foreach (var item in typeDistribution)
+                        {
+                            var percent = totalTypeCount == 0 ? 0 : (int)Math.Round(item.Count * 100.0 / totalTypeCount);
+                            <div class="mb-2">
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>@GetTypeDisplay(item.Type)</span>
+                                    <strong>@item.Count (@percent%)</strong>
+                                </div>
+                                <div class="progress" style="height: 10px;">
+                                    <div class="progress-bar @GetTypeBarClass(item.Type)" role="progressbar" style="width: @percent%"></div>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">🏁 Топ нарушителей (30 дней)</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Пользователь</th>
+                                    <th class="text-end">Нарушения</th>
+                                    <th class="text-end">Активные</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (topViolators.Count == 0)
+                                {
+                                    <tr><td colspan="3" class="text-center text-muted py-3">Данных нет</td></tr>
+                                }
+                                else
+                                {
+                                    @foreach (var row in topViolators)
+                                    {
+                                        <tr>
+                                            <td>@row.UserName</td>
+                                            <td class="text-end fw-semibold">@row.Total</td>
+                                            <td class="text-end">@row.Active</td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">👮 Активность модераторов (@daysRange дней)</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Модератор</th>
+                                    <th class="text-end">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (moderatorActivity.Count == 0)
+                                {
+                                    <tr><td colspan="2" class="text-center text-muted py-3">Данных нет</td></tr>
+                                }
+                                else
+                                {
+                                    @foreach (var row in moderatorActivity)
+                                    {
+                                        <tr>
+                                            <td>@row.Actor</td>
+                                            <td class="text-end fw-semibold">@row.Actions</td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger mt-3">@errorMessage</div>
+    }
+</div>
+
+@code {
+    private User? currentUser;
+    private readonly string contestId = "contest-1";
+    private int daysRange = 7;
+
+    private int violationsInRange;
+    private int activeSanctionsCount;
+    private int pendingAppealsCount;
+    private int activeModeratorsCount;
+
+    private int maxDaily;
+    private int totalTypeCount;
+    private string errorMessage = string.Empty;
+
+    private List<DailyPoint> dailySeries = new();
+    private List<TypePoint> typeDistribution = new();
+    private List<ViolatorRow> topViolators = new();
+    private List<ModeratorRow> moderatorActivity = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        if (currentUser?.Role >= UserRole.Moderator)
+            await LoadAsync();
+    }
+
+    private async Task ChangeRangeAsync(int days)
+    {
+        daysRange = days;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            errorMessage = string.Empty;
+            var now = DateTime.UtcNow;
+            var since = now.AddDays(-daysRange);
+            var monthSince = now.AddDays(-30);
+
+            var violations = await SorrowService.GetContestViolationsAsync(contestId, false);
+            var appeals = await AppealService.GetAppealsAsync(null, contestId);
+            var logs = await AuditService.GetLogsAsync(null, null, null, contestId, since, now, 1, 1000);
+
+            var violationsRange = violations.Where(v => v.CreatedAt >= since).ToList();
+            violationsInRange = violationsRange.Count;
+
+            activeSanctionsCount = violations.Count(v =>
+                v.Sanction != SanctionType.None &&
+                (!v.SanctionExpiredAt.HasValue || v.SanctionExpiredAt > now));
+
+            pendingAppealsCount = appeals.Count(a => a.Status == AppealStatus.Pending);
+
+            moderatorActivity = logs
+                .Where(l => l.ActorRole >= UserRole.Moderator)
+                .GroupBy(l => l.ActorName)
+                .Select(g => new ModeratorRow(g.Key, g.Count()))
+                .OrderByDescending(x => x.Actions)
+                .Take(10)
+                .ToList();
+
+            activeModeratorsCount = moderatorActivity.Count;
+
+            dailySeries = Enumerable.Range(0, daysRange)
+                .Select(offset => since.Date.AddDays(offset))
+                .Select(d => new DailyPoint(d, violationsRange.Count(v => v.CreatedAt.Date == d)))
+                .ToList();
+            maxDaily = dailySeries.Any() ? dailySeries.Max(x => x.Count) : 0;
+
+            typeDistribution = violationsRange
+                .GroupBy(v => v.Type)
+                .Select(g => new TypePoint(g.Key, g.Count()))
+                .OrderByDescending(x => x.Count)
+                .ToList();
+            totalTypeCount = typeDistribution.Sum(x => x.Count);
+
+            topViolators = violations
+                .Where(v => v.CreatedAt >= monthSince)
+                .GroupBy(v => v.UserName)
+                .Select(g => new ViolatorRow(g.Key, g.Count(), g.Count(v => !v.IsCleared)))
+                .OrderByDescending(x => x.Total)
+                .ThenByDescending(x => x.Active)
+                .Take(10)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Ошибка загрузки дашборда: {ex.Message}";
+        }
+    }
+
+    private static string GetTypeDisplay(ViolationType type) => type switch
+    {
+        ViolationType.Rudeness => "🤬 Грубость",
+        ViolationType.Trolling => "🎣 Троллинг",
+        ViolationType.Spam => "📢 Спам",
+        ViolationType.Other => "⚠️ Другое",
+        _ => "Неизвестно"
+    };
+
+    private static string GetTypeBarClass(ViolationType type) => type switch
+    {
+        ViolationType.Rudeness => "bg-danger",
+        ViolationType.Trolling => "bg-warning",
+        ViolationType.Spam => "bg-info",
+        ViolationType.Other => "bg-secondary",
+        _ => "bg-secondary"
+    };
+
+    private record DailyPoint(DateTime Date, int Count);
+    private record TypePoint(ViolationType Type, int Count);
+    private record ViolatorRow(string UserName, int Total, int Active);
+    private record ModeratorRow(string Actor, int Actions);
+}
