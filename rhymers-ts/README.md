@@ -1,5 +1,7 @@
 # Rhymers TypeScript Migration
 
+[![Rhymers TS CI](https://github.com/LucasVakhos/votecounter/actions/workflows/rhymers-ts-ci.yml/badge.svg)](https://github.com/LucasVakhos/votecounter/actions/workflows/rhymers-ts-ci.yml)
+
 This folder contains a new TypeScript version of the project, created in parallel with the existing .NET codebase.
 
 ## Goals
@@ -32,4 +34,10 @@ Run Web:
 
 ```bash
 npm run dev:web
+```
+
+Run full CI checks locally:
+
+```bash
+npm run ci
 ```
