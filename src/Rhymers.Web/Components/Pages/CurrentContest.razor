@@ -2,6 +2,7 @@
 @using Rhymers.Core.Models
 @using Rhymers.Web.Services
 @inject ContestService ContestService
+@inject AuthorizationWebService AuthService
 @inject NavigationManager NavigationManager
 
 <div class="container mt-4">
@@ -68,12 +69,19 @@
 </div>
 
 @code {
+    // Models
+    // State
     private Contest? contest;
     private List<WorkSubmission> approvedSubmissions = new();
     private bool isLoading = true;
 
+
+
+    private User? currentUser;
+
     protected override async Task OnInitializedAsync()
     {
+        currentUser = await AuthService.GetCurrentUserAsync();
         contest = await ContestService.GetCurrentContestAsync();
         if (contest != null)
             approvedSubmissions = await ContestService.GetApprovedWorkSubmissionsAsync(contest.Id);

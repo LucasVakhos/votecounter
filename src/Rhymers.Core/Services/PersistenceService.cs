@@ -417,6 +417,21 @@ public sealed class PersistenceService
             );");
 
         await _context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS UserViolations(
+                Id TEXT NOT NULL PRIMARY KEY,
+                ContestId TEXT NOT NULL,
+                UserName TEXT NOT NULL,
+                MessageId TEXT NOT NULL,
+                Type INTEGER NOT NULL DEFAULT 0,
+                Details TEXT,
+                ModeratorName TEXT NOT NULL,
+                CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                IsCleared INTEGER NOT NULL DEFAULT 0,
+                ClearedAt TEXT,
+                ClearedByModerator TEXT
+            );");
+
+        await _context.Database.ExecuteSqlRawAsync(@"
             INSERT OR IGNORE INTO TopicKinds(Id, Name, SortNo) VALUES(1, 'Строка', 1);
             INSERT OR IGNORE INTO TopicKinds(Id, Name, SortNo) VALUES(2, 'Картина', 2);
             INSERT OR IGNORE INTO TopicKinds(Id, Name, SortNo) VALUES(3, 'Тема', 3);

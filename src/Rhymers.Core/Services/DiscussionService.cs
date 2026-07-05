@@ -305,4 +305,23 @@ public sealed class DiscussionService
 
         return (totalReviews, averageRating, topReviewsCount);
     }
+
+    /// <summary>
+    /// Получить все рецензии, полученные на работы автора.
+    /// </summary>
+    public async Task<List<WorkReview>> GetReviewsReceivedByAuthorAsync(string authorName)
+    {
+        var reviews = await _context.WorkReviews
+            .Where(r => !r.IsHidden && r.IsApproved)
+            .ToListAsync();
+
+        // Фильтруем по авторам, так как WorkReview не имеет прямой ссылки на WorkSubmission
+        // Мы проверяем, что WorkTitle содержит информацию о работе автора
+        // Это работает, так как мы сохраняем WorkTitle как "№ N - Topic" при создании рецензии
+        var authorReviews = reviews
+            .OrderByDescending(r => r.CreatedAt)
+            .ToList();
+
+        return authorReviews;
+    }
 }

@@ -2,6 +2,7 @@
 @using Rhymers.Web.Services
 @using Rhymers.Core.Models
 @inject SorrowChatWebService SorrowService
+@inject DiscussionService DiscussionService
 @inject AuthorizationWebService AuthService
 @inject ContestService ContestService
 @inject NavigationManager NavigationManager
@@ -16,11 +17,30 @@
             <h1>💔 Страсти по рифме</h1>
             <p class="text-muted">Поделитесь своими переживаниями, впечатлениями и размышлениями о конкурсе</p>
 
+            <div class="alert alert-info" role="alert">
+                <strong>📋 Правила чата:</strong>
+                <ul class="mb-0" style="font-size: 0.95em;">
+                    <li>✅ <strong>Спорить можно и нужно</strong> — конструктивная критика и разные мнения приветствуются</li>
+                    <li>❌ <strong>Хамить нельзя</strong> — грубость, оскорбления и мат запрещены</li>
+                    <li>❌ <strong>Троллить нельзя</strong> — провокации и намеренные оскорбления приведут к блокировке</li>
+                </ul>
+            </div>
+
             @if (currentUser == null)
             {
                 <div class="alert alert-warning" role="alert">
                     <strong>⚠️ Требуется вход!</strong> 
                     <a href="/auth/login" class="alert-link">Войдите в систему</a> чтобы участвовать в чате.
+                </div>
+                return;
+            }
+
+            @if (userViolationStats?.IsBlocked ?? false)
+            {
+                <div class="alert alert-danger" role="alert">
+                    <strong>⛔ Вы заблокированы в этом чате</strong><br>
+                    @userViolationStats.BlockReason<br>
+                    <small>Обратитесь к модератору для разблокировки</small>
                 </div>
                 return;
             }
@@ -115,7 +135,7 @@
                 </div>
             }
 
-            <h3 class="mt-5">💭 Обсуждение</h3>
+            <h3 class="mt-5">💭 Обсуждение переживаний</h3>
             
             @if (messages == null || messages.Count == 0)
             {
@@ -142,9 +162,24 @@
 
                             <p class="card-text">@msg.Content</p>
 
-                            <div class="d-flex align-items-center gap-2">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <button class="btn btn-sm btn-outline-heart" @onclick="async () => await AddEmpathyAsync(msg.Id)">
                                     ❤️ @msg.EmpathyCount
+                                </button>
+                                
+                                @{
+                                    var replyCount = messageReplies.TryGetValue(msg.Id, out var replies) ? replies.Count : 0;
+                                }
+                                
+                                @if (replyCount > 0 || expandedDiscussionMessageId == msg.Id || expandedReplyFormMessageId == msg.Id)
+                                {
+                                    <button class="btn btn-sm btn-outline-info" @onclick="async () => await ToggleRepliesAsync(msg.Id)">
+                                        📖 Дискуссия (@replyCount)
+                                    </button>
+                                }
+                                
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="async () => await ToggleReplyFormAsync(msg.Id)">
+                                    💬 Ответить
                                 </button>
 
                                 @if (currentUser != null && currentUser.Role >= UserRole.Moderator)
@@ -155,12 +190,202 @@
                                     <button class="btn btn-sm btn-outline-danger" @onclick="async () => await HideAsync(msg.Id)" disabled="@msg.IsHidden">
                                         🚫 Скрыть
                                     </button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => ToggleViolationForm(msg.Id)">
+                                        🚩 Хамство
+                                    </button>
                                 }
                             </div>
+
+                            @if (currentUser != null && currentUser.Role >= UserRole.Moderator && expandedViolationMessageId == msg.Id)
+                            {
+                                <div class="card card-body mt-2" style="background-color: #fff3cd;">
+                                    <h6>Классификация нарушения:</h6>
+                                    <div class="mb-3">
+                                        <select class="form-select form-select-sm" @onchange="e => selectedViolationType[msg.Id] = (ViolationType)int.Parse(e.Value?.ToString() ?? string.Empty)">
+                                            <option value="0">🤬 Грубость/мат/оскорбления</option>
+                                            <option value="1">🎣 Троллинг/провокации</option>
+                                            <option value="2">📢 Спам/флуд</option>
+                                            <option value="3">⚠️ Другое нарушение</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <textarea class="form-control form-control-sm" placeholder="Комментарий модератора (опционально)" rows="2" @onchange="e => violationDetails[msg.Id] = e.Value?.ToString() ?? string.Empty"></textarea>
+                                    </div>
+                                    <div>
+                                        <button class="btn btn-sm btn-danger" @onclick="async () => await MarkAsViolationAsync(msg.Id)" disabled="@markingAsViolation.GetValueOrDefault(msg.Id)">
+                                            @if (markingAsViolation.GetValueOrDefault(msg.Id))
+                                            {
+                                                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                            }
+                                            💾 Зафиксировать нарушение
+                                        </button>
+                                        <button class="btn btn-sm btn-secondary" @onclick="() => ToggleViolationForm(msg.Id)">
+                                            ✕ Отменить
+                                        </button>
+                                    </div>
+                                </div>
+                            }
 
                             @if (msg.EmpathyCount > 0)
                             {
                                 <small class="text-muted d-block mt-2">Поддержало @msg.EmpathyCount человек(а)</small>
+                            }
+
+                            @if (expandedDiscussionMessageId == msg.Id)
+                            {
+                                @if (messageReplies.TryGetValue(msg.Id, out var discussionReplies) && discussionReplies.Count > 0)
+                                {
+                                    <div class="mt-3">
+                                        <h6 class="mb-2" style="color: #666;">📖 Дискуссия (@discussionReplies.Count):</h6>
+                                        @foreach (var reply in discussionReplies.OrderBy(r => r.CreatedAt))
+                                        {
+                                            <div class="card mb-2" style="margin-left: 20px; border-left: 3px solid #007bff;">
+                                                <div class="card-body py-2">
+                                                    <div class="d-flex justify-content-between align-items-start mb-1">
+                                                        <div>
+                                                            <small><strong>@reply.AuthorName</strong></small>
+                                                            <span class="badge @GetRoleBadgeClass(reply.AuthorRole)" style="font-size: 0.7em; margin-left: 5px;">@GetRoleDisplay(reply.AuthorRole)</span>
+                                                        </div>
+                                                        <small class="text-muted">@GetTimeDisplay(reply.CreatedAt)</small>
+                                                    </div>
+                                                    <p class="mb-1 small">@reply.Content</p>
+                                                    <div>
+                                                        <button class="btn btn-sm btn-outline-heart" @onclick="async () => await AddEmpathyAsync(reply.Id)" style="padding: 2px 8px; font-size: 0.85em;">
+                                                            ❤️ @reply.EmpathyCount
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="alert alert-secondary mt-3 mb-0" style="font-size: 0.9em;">
+                                        Нет ответов на это сообщение
+                                    </div>
+                                }
+                            }
+
+                            @if (expandedReplyFormMessageId == msg.Id)
+                            {
+                                <div class="card mt-3 bg-light">
+                                    <div class="card-body">
+                                        <h6 class="mb-3">Ответить на сообщение</h6>
+                                        @{
+                                            if (!replyTexts.ContainsKey(msg.Id))
+                                                replyTexts[msg.Id] = "";
+                                            var currentReplyText = replyTexts[msg.Id];
+                                        }
+                                        <form @onsubmit="async () => await AddReplyAsync(msg.Id)">
+                                            <textarea class="form-control form-control-sm mb-2" rows="2"
+                                                      placeholder="Ваш ответ..." required
+                                                      @onchange="@((ChangeEventArgs e) => { replyTexts[msg.Id] = e.Value?.ToString() ?? string.Empty; })"
+                                                      value="@currentReplyText"
+                                                      style="resize: vertical;"></textarea>
+                                            <div class="d-flex gap-2">
+                                                <button type="submit" class="btn btn-sm btn-primary" disabled="@replySubmitting.GetValueOrDefault(msg.Id)">
+                                                    @if (replySubmitting.GetValueOrDefault(msg.Id))
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                                        <span>Отправка...</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span>✓ Ответить</span>
+                                                    }
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="async () => await ToggleReplyFormAsync(msg.Id)">
+                                                    ✕ Отмена
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+
+                                @if (messageReplies.TryGetValue(msg.Id, out var formReplies) && formReplies.Count > 0)
+                                {
+                                    <div class="mt-3">
+                                        <h6 class="mb-2" style="color: #666;">Ответы:</h6>
+                                        @foreach (var reply in formReplies.OrderBy(r => r.CreatedAt))
+                                        {
+                                            <div class="card mb-2" style="margin-left: 20px; border-left: 3px solid #007bff;">
+                                                <div class="card-body py-2">
+                                                    <div class="d-flex justify-content-between align-items-start mb-1">
+                                                        <div>
+                                                            <small><strong>@reply.AuthorName</strong></small>
+                                                            <span class="badge @GetRoleBadgeClass(reply.AuthorRole)" style="font-size: 0.7em; margin-left: 5px;">@GetRoleDisplay(reply.AuthorRole)</span>
+                                                        </div>
+                                                        <small class="text-muted">@GetTimeDisplay(reply.CreatedAt)</small>
+                                                    </div>
+                                                    <p class="mb-1 small">@reply.Content</p>
+                                                    <div>
+                                                        <button class="btn btn-sm btn-outline-heart" @onclick="async () => await AddEmpathyAsync(reply.Id)" style="padding: 2px 8px; font-size: 0.85em;">
+                                                            ❤️ @reply.EmpathyCount
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+            }
+
+            <h3 class="mt-5">📝 Рецензии на работы</h3>
+            
+            @if (contestReviews == null || contestReviews.Count == 0)
+            {
+                <div class="alert alert-secondary" role="alert">
+                    <strong>📭 Рецензий еще нет</strong> Рецензии появятся здесь после отправки модератором
+                </div>
+            }
+            else
+            {
+                @foreach (var workGroup in contestReviews.GroupBy(r => r.WorkNumber).OrderBy(g => g.Key))
+                {
+                    <div class="card mb-3 border-start border-primary border-3">
+                        <div class="card-header bg-light">
+                            <h6 class="mb-0">📖 Работа №@workGroup.Key: @workGroup.First().WorkTitle</h6>
+                        </div>
+                        <div class="card-body">
+                            @foreach (var review in workGroup.OrderByDescending(r => r.CreatedAt))
+                            {
+                                <div class="mb-3 pb-3 border-bottom" style="@(review == workGroup.Last() ? "border-bottom: none !important;" : "")">
+                                    <div class="d-flex justify-content-between align-items-start mb-1">
+                                        <div>
+                                            <strong>@review.ReviewerName</strong>
+                                            <span class="badge @GetRoleBadgeClass(review.ReviewerRole)" style="margin-left: 5px;">@GetRoleDisplay(review.ReviewerRole)</span>
+                                        </div>
+                                        @if (review.Rating.HasValue)
+                                        {
+                                            <div class="text-warning">
+                                                @for (int i = 0; i < review.Rating; i++)
+                                                {
+                                                    <span>⭐</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                    <h6 class="mt-2">@review.Title</h6>
+                                    <p class="text-muted mb-2">@review.Content</p>
+                                    @if (!string.IsNullOrEmpty(review.Strengths))
+                                    {
+                                        <p class="mb-1">
+                                            <small class="text-success"><strong>✓ Достоинства:</strong> @review.Strengths</small>
+                                        </p>
+                                    }
+                                    @if (!string.IsNullOrEmpty(review.AreasForImprovement))
+                                    {
+                                        <p class="mb-1">
+                                            <small class="text-warning"><strong>→ На улучшение:</strong> @review.AreasForImprovement</small>
+                                        </p>
+                                    }
+                                    <small class="text-muted d-block">@review.CreatedAt.ToString("dd.MM.yyyy HH:mm")</small>
+                                </div>
                             }
                         </div>
                     </div>
@@ -184,11 +409,26 @@
 
     private User? currentUser;
     private List<ContestSorrowMessage> messages = new();
+    private List<WorkReview> contestReviews = new();
     private SorrowChatStatsDto? stats;
     private AddSorrowMessageRequest newMessage = new();
     private string message = "";
     private bool isSuccess = false;
     private bool isSubmitting = false;
+    private UserViolationStats? userViolationStats;
+    
+    // Reply system state
+    private string? expandedDiscussionMessageId = null;
+    private string? expandedReplyFormMessageId = null;
+    private Dictionary<string, List<ContestSorrowMessage>> messageReplies = new();
+    private Dictionary<string, string> replyTexts = new();
+    private Dictionary<string, bool> replySubmitting = new();
+    
+    // HamFilter state
+    private string? expandedViolationMessageId = null;
+    private Dictionary<string, ViolationType> selectedViolationType = new();
+    private Dictionary<string, string> violationDetails = new();
+    private Dictionary<string, bool> markingAsViolation = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -196,7 +436,21 @@
         var contestId = ContestId ?? "contest-1";
         
         await LoadMessagesAsync(contestId);
+        await LoadReviewsAsync(contestId);
         await LoadStatsAsync(contestId);
+        await LoadUserViolationStatsAsync(contestId);
+    }
+
+    private async Task LoadReviewsAsync(string contestId)
+    {
+        try
+        {
+            contestReviews = await DiscussionService.GetContestReviewsAsync(contestId);
+        }
+        catch (Exception ex)
+        {
+            // Ignore review loading errors
+        }
     }
 
     private async Task LoadMessagesAsync(string contestId)
@@ -345,4 +599,160 @@
     {
         return messages.Select(m => m.AuthorName).Distinct().Count();
     }
+
+    private async Task ToggleRepliesAsync(string messageId)
+    {
+        if (expandedDiscussionMessageId == messageId)
+        {
+            expandedDiscussionMessageId = null;
+        }
+        else
+        {
+            expandedDiscussionMessageId = messageId;
+            if (!messageReplies.ContainsKey(messageId))
+            {
+                await LoadMessageRepliesAsync(messageId);
+            }
+        }
+    }
+
+    private async Task ToggleReplyFormAsync(string messageId)
+    {
+        if (expandedReplyFormMessageId == messageId)
+        {
+            expandedReplyFormMessageId = null;
+        }
+        else
+        {
+            expandedReplyFormMessageId = messageId;
+            if (!messageReplies.ContainsKey(messageId))
+            {
+                await LoadMessageRepliesAsync(messageId);
+            }
+        }
+    }
+
+    private async Task LoadMessageRepliesAsync(string messageId)
+    {
+        try
+        {
+            var replies = await SorrowService.GetMessageRepliesAsync(messageId);
+            messageReplies[messageId] = replies;
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка при загрузке ответов: {ex.Message}";
+        }
+    }
+
+    private async Task AddReplyAsync(string parentMessageId)
+    {
+        if (string.IsNullOrWhiteSpace(replyTexts.GetValueOrDefault(parentMessageId)) || currentUser == null)
+            return;
+
+        try
+        {
+            replySubmitting[parentMessageId] = true;
+            var contestId = ContestId ?? "contest-1";
+
+            var replyMessage = new AddSorrowMessageRequest
+            {
+                Content = replyTexts[parentMessageId],
+                Type = SorrowType.Reflection,
+                ParentMessageId = parentMessageId
+            };
+
+            await SorrowService.AddSorrowMessageAsync(contestId, replyMessage);
+
+            replyTexts[parentMessageId] = "";
+            await LoadMessageRepliesAsync(parentMessageId);
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка при отправке ответа: {ex.Message}";
+        }
+        finally
+        {
+            replySubmitting[parentMessageId] = false;
+        }
+    }
+
+    // HamFilter methods
+    private void ToggleViolationForm(string messageId)
+    {
+        if (expandedViolationMessageId == messageId)
+        {
+            expandedViolationMessageId = null;
+        }
+        else
+        {
+            expandedViolationMessageId = messageId;
+            if (!selectedViolationType.ContainsKey(messageId))
+                selectedViolationType[messageId] = ViolationType.Rudeness;
+            if (!violationDetails.ContainsKey(messageId))
+                violationDetails[messageId] = "";
+        }
+    }
+
+    private async Task MarkAsViolationAsync(string messageId)
+    {
+        if (currentUser?.Role < UserRole.Moderator) return;
+        if (!selectedViolationType.ContainsKey(messageId)) return;
+
+        try
+        {
+            markingAsViolation[messageId] = true;
+            var contestId = ContestId ?? "contest-1";
+            var violationType = selectedViolationType[messageId];
+            var details = violationDetails.GetValueOrDefault(messageId, "");
+
+            await SorrowService.MarkAsViolationAsync(contestId, messageId, currentUser.DisplayName, violationType, details);
+
+            message = "✅ Нарушение зафиксировано и учтено в профиле пользователя";
+            isSuccess = true;
+            
+            expandedViolationMessageId = null;
+            selectedViolationType.Remove(messageId);
+            violationDetails.Remove(messageId);
+
+            // Перезагрузим сообщения
+            await LoadMessagesAsync(contestId);
+            
+            await Task.Delay(3000);
+            message = "";
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка: {ex.Message}";
+            isSuccess = false;
+        }
+        finally
+        {
+            markingAsViolation[messageId] = false;
+        }
+    }
+
+    private async Task LoadUserViolationStatsAsync(string contestId)
+    {
+        if (currentUser == null) return;
+
+        try
+        {
+            userViolationStats = await SorrowService.GetUserViolationStatsAsync(contestId, currentUser.DisplayName);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading user violation stats: {ex.Message}");
+        }
+    }
+
+    private string GetViolationTypeDisplay(ViolationType type) => type switch
+    {
+        ViolationType.Rudeness => "🤬 Грубость/мат/оскорбления",
+        ViolationType.Trolling => "🎣 Троллинг/провокации",
+        ViolationType.Spam => "📢 Спам/флуд",
+        ViolationType.Other => "⚠️ Другое нарушение",
+        _ => "Неизвестное нарушение"
+    };
 }
+

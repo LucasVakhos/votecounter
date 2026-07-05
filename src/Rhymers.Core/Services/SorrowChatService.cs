@@ -144,6 +144,99 @@ public sealed class SorrowChatService
                 .ToDictionary(g => g.Key.ToString(), g => g.Count())
         };
     }
+
+    // ==================== HamFilter: Система контроля за хамством ====================
+
+    /// <summary>
+    /// Отметить сообщение как хамство (нарушение)
+    /// </summary>
+    public async Task<UserViolation> MarkAsViolationAsync(string contestId, string messageId, string moderatorName, ViolationType type = ViolationType.Rudeness, string? details = null)
+    {
+        var message = await GetSorrowMessageAsync(messageId);
+        if (message == null)
+            throw new InvalidOperationException($"Message {messageId} not found");
+
+        var violation = new UserViolation
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            ContestId = contestId,
+            UserName = message.AuthorName,
+            MessageId = messageId,
+            Type = type,
+            Details = details,
+            ModeratorName = moderatorName,
+            CreatedAt = DateTime.UtcNow,
+            IsCleared = false
+        };
+
+        _context.UserViolations.Add(violation);
+        await _context.SaveChangesAsync();
+        return violation;
+    }
+
+    /// <summary>
+    /// Получить статистику нарушений пользователя
+    /// </summary>
+    public async Task<UserViolationStats> GetUserViolationStatsAsync(string contestId, string userName)
+    {
+        var violations = await _context.UserViolations
+            .Where(v => v.ContestId == contestId && v.UserName == userName)
+            .ToListAsync();
+
+        var activeViolations = violations.Count(v => !v.IsCleared);
+        const int MaxViolationsBeforeBlock = 3; // Блокировка после 3-х нарушений
+
+        var violationsByType = violations
+            .Where(v => !v.IsCleared)
+            .GroupBy(v => v.Type)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        return new UserViolationStats
+        {
+            UserName = userName,
+            TotalViolations = violations.Count,
+            ActiveViolations = activeViolations,
+            LastViolationAt = violations.OrderByDescending(v => v.CreatedAt).FirstOrDefault()?.CreatedAt,
+            IsBlocked = activeViolations >= MaxViolationsBeforeBlock,
+            BlockReason = activeViolations >= MaxViolationsBeforeBlock 
+                ? $"⛔ Пользователь заблокирован на этапе модерации. Нарушений: {activeViolations}/3"
+                : null,
+            ViolationsByType = violationsByType
+        };
+    }
+
+    /// <summary>
+    /// Получить все нарушения в контесте
+    /// </summary>
+    public async Task<List<UserViolation>> GetContestViolationsAsync(string contestId, bool onlyActive = false)
+    {
+        var query = _context.UserViolations.Where(v => v.ContestId == contestId);
+        
+        if (onlyActive)
+            query = query.Where(v => !v.IsCleared);
+
+        return await query
+            .OrderByDescending(v => v.CreatedAt)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Снять предупреждение (реабилитация пользователя)
+    /// </summary>
+    public async Task<UserViolation> ClearViolationAsync(string violationId, string moderatorName)
+    {
+        var violation = await _context.UserViolations.FindAsync(violationId);
+        if (violation == null)
+            throw new InvalidOperationException($"Violation {violationId} not found");
+
+        violation.IsCleared = true;
+        violation.ClearedAt = DateTime.UtcNow;
+        violation.ClearedByModerator = moderatorName;
+
+        _context.UserViolations.Update(violation);
+        await _context.SaveChangesAsync();
+        return violation;
+    }
 }
 
 /// <summary>

@@ -94,6 +94,44 @@ public class SorrowChatWebService
         var stats = await _sorrowService.GetChatStatsAsync(contestId);
         return await Task.FromResult(stats);
     }
+
+    // ==================== HamFilter: Система контроля за хамством ====================
+
+    /// <summary>
+    /// Отметить сообщение как хамство (нарушение)
+    /// </summary>
+    public async Task<UserViolation> MarkAsViolationAsync(string contestId, string messageId, string moderatorName, ViolationType type = ViolationType.Rudeness, string? details = null)
+    {
+        var violation = await _sorrowService.MarkAsViolationAsync(contestId, messageId, moderatorName, type, details);
+        return await Task.FromResult(violation);
+    }
+
+    /// <summary>
+    /// Получить статистику нарушений пользователя
+    /// </summary>
+    public async Task<UserViolationStats> GetUserViolationStatsAsync(string contestId, string userName)
+    {
+        var stats = await _sorrowService.GetUserViolationStatsAsync(contestId, userName);
+        return await Task.FromResult(stats);
+    }
+
+    /// <summary>
+    /// Получить все нарушения в контесте
+    /// </summary>
+    public async Task<List<UserViolation>> GetContestViolationsAsync(string contestId, bool onlyActive = false)
+    {
+        var violations = await _sorrowService.GetContestViolationsAsync(contestId, onlyActive);
+        return await Task.FromResult(violations);
+    }
+
+    /// <summary>
+    /// Снять предупреждение (реабилитация пользователя)
+    /// </summary>
+    public async Task<UserViolation> ClearViolationAsync(string violationId, string moderatorName)
+    {
+        var violation = await _sorrowService.ClearViolationAsync(violationId, moderatorName);
+        return await Task.FromResult(violation);
+    }
 }
 
 /// <summary>

@@ -3,6 +3,7 @@
 @using Rhymers.Web.Services
 @inject AuthorizationWebService AuthService
 @inject ContestService ContestService
+@inject DiscussionService DiscussionService
 @inject IJSRuntime JS
 
 <PageTitle>Профиль</PageTitle>
@@ -43,7 +44,7 @@
                     </div>
                 </div>
 
-                <div class="card">
+                <div class="card mb-4">
                     <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">🏆 Полка призов</h5>
                         @if (userPrizes.Count > 0)
@@ -123,6 +124,56 @@
                         }
                     </div>
                 </div>
+
+                @if (userReviews.Count > 0)
+                {
+                    <div class="card">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0">⭐ Рецензии на мои работы</h5>
+                        </div>
+                        <div class="card-body">
+                            @foreach (var review in userReviews.OrderByDescending(r => r.CreatedAt))
+                            {
+                                <div class="card mb-3 border-left-primary">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <div>
+                                                <h6 class="card-subtitle mb-1">
+                                                    <strong>Работа №@review.WorkNumber: @review.WorkTitle</strong>
+                                                </h6>
+                                                <small class="text-muted">Рецензия от <strong>@review.ReviewerName</strong> (@GetRoleDisplay(review.ReviewerRole))</small>
+                                            </div>
+                                            @if (review.Rating.HasValue)
+                                            {
+                                                <div class="text-warning">
+                                                    @for (int i = 0; i < review.Rating; i++)
+                                                    {
+                                                        <span>⭐</span>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                        <h6 class="mt-2">@review.Title</h6>
+                                        <p class="card-text">@review.Content</p>
+                                        @if (!string.IsNullOrEmpty(review.Strengths))
+                                        {
+                                            <p class="mb-2">
+                                                <small class="text-success"><strong>✓ Достоинства:</strong> @review.Strengths</small>
+                                            </p>
+                                        }
+                                        @if (!string.IsNullOrEmpty(review.AreasForImprovement))
+                                        {
+                                            <p class="mb-2">
+                                                <small class="text-warning"><strong>→ На улучшение:</strong> @review.AreasForImprovement</small>
+                                            </p>
+                                        }
+                                        <small class="text-muted d-block mt-2">@review.CreatedAt.ToString("dd.MM.yyyy HH:mm")</small>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
             }
         </div>
     </div>
@@ -196,6 +247,7 @@
 @code {
     private User? currentUser;
     private List<HallOfFameEntry> userPrizes = new();
+    private List<WorkReview> userReviews = new();
     private bool isExporting = false;
 
     protected override async Task OnInitializedAsync()
@@ -204,6 +256,7 @@
         if (currentUser?.DisplayName != null)
         {
             userPrizes = await ContestService.GetUserHallOfFameEntriesAsync(currentUser.DisplayName);
+            userReviews = await DiscussionService.GetReviewsReceivedByAuthorAsync(currentUser.DisplayName);
         }
     }
 
