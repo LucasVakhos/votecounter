@@ -1,0 +1,180 @@
+@page "/my-submissions"
+@using Rhymers.Web.Services
+@using Rhymers.Core.Models
+@inject ModerationWebService ModerationService
+@inject AuthorizationWebService AuthService
+@inject NavigationManager NavManager
+
+@if (currentUser == null)
+{
+    <div class="container mt-4">
+        <div class="alert alert-danger" role="alert">
+            <h4 class="alert-heading">🔒 Требуется вход</h4>
+            <p>Пожалуйста, авторизуйтесь чтобы просмотреть статус ваших работ.</p>
+            <a href="/auth/login" class="btn btn-primary">Перейти на страницу входа</a>
+        </div>
+    </div>
+}
+else if (currentUser.Role < UserRole.Author)
+{
+    <div class="container mt-4">
+        <div class="alert alert-warning" role="alert">
+            <h4 class="alert-heading">⛔ Доступ запрещён</h4>
+            <p>Для подачи работ требуется роль <strong>Автор</strong> или выше.</p>
+            <p>Ваша текущая роль: <strong>@GetRoleDisplay(currentUser.Role)</strong></p>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container mt-4">
+        <h1>📋 Статус моих работ - @currentUser.DisplayName</h1>
+        
+        <div class="alert alert-info" role="alert">
+            <strong>ℹ️ Статус:</strong> Здесь вы можете видеть статус ваших подданных работ.
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Загрузка...</span>
+            </div>
+        }
+        else if (authorSubmissions == null || authorSubmissions.Count == 0)
+        {
+            <div class="alert alert-info">У вас нет подданных работ</div>
+            <a href="/submit-work" class="btn btn-primary">📝 Подать новую работу</a>
+        }
+        else
+        {
+            <div class="row">
+                @foreach (var submission in authorSubmissions)
+                {
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100">
+                            <div class="card-header @GetStatusHeaderClass(submission.Status)">
+                                <strong>@submission.Work.Title</strong>
+                                <span class="badge float-end @GetStatusBadgeClass(submission.Status)">
+                                    @GetStatusText(submission.Status)
+                                </span>
+                            </div>
+                            
+                            <div class="card-body">
+                                <p class="card-text">
+                                    @if (!string.IsNullOrEmpty(submission.Work.Subtitle))
+                                    {
+                                        <div><strong>Подзаголовок:</strong> @submission.Work.Subtitle</div>
+                                    }
+                                    <div><strong>Тема:</strong> @submission.Work.Topic</div>
+                                    <div><strong>Конкурс:</strong> @submission.ContestId</div>
+                                    <div><strong>Подана:</strong> @submission.SubmittedAt.ToString("dd.MM.yyyy HH:mm")</div>
+                                </p>
+
+                                @switch (submission.Status)
+                                {
+                                    case WorkStatus.PendingModeration:
+                                    case WorkStatus.UnderReview:
+                                        <div class="alert alert-warning mb-0" role="alert">
+                                            <strong>⏳ На модерации</strong><br />
+                                            <small>Ожидаем решения модератора...</small>
+                                        </div>
+                                        break;
+                                    
+                                    case WorkStatus.Approved:
+                                        <div class="alert alert-success mb-0" role="alert">
+                                            <strong>✅ Одобрена!</strong><br />
+                                            <small>Одобрена @submission.ModeratedAt?.ToString("dd.MM.yyyy HH:mm")</small><br />
+                                            <small>Модератор: @submission.ModeratorName</small>
+                                        </div>
+                                        break;
+                                    
+                                    case WorkStatus.Rejected:
+                                        <div class="alert alert-danger mb-0" role="alert">
+                                            <strong>❌ Отклонена</strong><br />
+                                            <small><strong>Причина:</strong> @submission.ModerationNote</small><br />
+                                            <small>Модератор: @submission.ModeratorName</small><br />
+                                            <a href="/submit-work" class="btn btn-sm btn-warning mt-2">📝 Подать исправленную версию</a>
+                                        </div>
+                                        break;
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="mt-4">
+                <a href="/submit-work" class="btn btn-primary">📝 Подать ещё одну работу</a>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private User? currentUser;
+    private List<WorkSubmission>? authorSubmissions;
+    private bool isLoading = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && currentUser != null && currentUser.Role >= UserRole.Author)
+        {
+            await LoadSubmissionsAsync();
+        }
+    }
+
+    private async Task LoadSubmissionsAsync()
+    {
+        try
+        {
+            isLoading = true;
+            if (currentUser != null)
+            {
+                authorSubmissions = await ModerationService.GetAuthorSubmissionsAsync(currentUser.Username);
+            }
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetStatusHeaderClass(WorkStatus status) => status switch
+    {
+        WorkStatus.PendingModeration or WorkStatus.UnderReview => "bg-warning text-dark",
+        WorkStatus.Approved => "bg-success text-white",
+        WorkStatus.Rejected => "bg-danger text-white",
+        _ => "bg-secondary text-white"
+    };
+
+    private string GetStatusBadgeClass(WorkStatus status) => status switch
+    {
+        WorkStatus.PendingModeration or WorkStatus.UnderReview => "bg-warning",
+        WorkStatus.Approved => "bg-success",
+        WorkStatus.Rejected => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private string GetStatusText(WorkStatus status) => status switch
+    {
+        WorkStatus.PendingModeration => "⏳ На модерации",
+        WorkStatus.UnderReview => "👀 Рассмотрение",
+        WorkStatus.Approved => "✅ Одобрена",
+        WorkStatus.Rejected => "❌ Отклонена",
+        _ => "❓ Неизвестно"
+    };
+
+    private string GetRoleDisplay(UserRole role) => role switch
+    {
+        UserRole.Reader => "👤 Читатель/Оценщик",
+        UserRole.Author => "✍️ Автор",
+        UserRole.Moderator => "🔍 Модератор",
+        UserRole.Admin => "👨‍💼 Администратор",
+        _ => "?"
+    };
+}

@@ -1,0 +1,120 @@
+@page "/auth/login"
+@using Rhymers.Web.Services
+@using Rhymers.Core.Models
+@inject AuthorizationWebService AuthService
+@inject NavigationManager Navigation
+
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">🔐 Вход в систему</h4>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Имя пользователя</label>
+                        <input type="text" @bind="username" class="form-control" placeholder="Введите имя пользователя" @onkeyup="@((KeyboardEventArgs e) => HandleKeyPress(e))">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Пароль</label>
+                        <input type="password" @bind="password" class="form-control" placeholder="Введите пароль" @onkeyup="@((KeyboardEventArgs e) => HandleKeyPress(e))">
+                    </div>
+
+                    <div class="alert alert-info" role="alert">
+                        <small>
+                            <strong>Демо учётные записи:</strong> reader1, author1, moderator1, admin1<br/>
+                            <strong>Пароль для всех:</strong> password123
+                        </small>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(message))
+                    {
+                        <div class="alert @(isSuccess ? "alert-success" : "alert-danger")" role="alert">
+                            @message
+                        </div>
+                    }
+
+                    <button @onclick="LoginAsync" disabled="@isLoading" class="btn btn-primary w-100">
+                        @if (isLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <span>Вход...</span>
+                        }
+                        else
+                        {
+                            <span>🔓 Войти</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string username = "author1";
+    private string password = "";
+    private string message = "";
+    private bool isSuccess = false;
+    private bool isLoading = false;
+
+    private void HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            _ = LoginAsync();
+        }
+    }
+
+    private async Task LoginAsync()
+    {
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            message = "❌ Введите имя пользователя";
+            isSuccess = false;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            message = "❌ Введите пароль";
+            isSuccess = false;
+            return;
+        }
+
+        try
+        {
+            isLoading = true;
+
+            // Попытаться логин с паролем
+            var (success, error) = await AuthService.LoginAsync(username, password);
+            
+            if (success)
+            {
+                var user = await AuthService.GetCurrentUserAsync();
+                message = $"✅ Вход выполнен! Добро пожаловать, {user?.DisplayName}!";
+                isSuccess = true;
+
+                // Через 2 секунды перенаправить на главную
+                await Task.Delay(2000);
+                Navigation.NavigateTo("/");
+            }
+            else
+            {
+                message = $"❌ {error}";
+                isSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка: {ex.Message}";
+            isSuccess = false;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

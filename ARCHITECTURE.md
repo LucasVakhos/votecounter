@@ -1,12 +1,12 @@
-# VoteCounter - Refactored Architecture
+# Rhymers - Refactored Architecture
 
 ## Project Structure
 
-The VoteCounter project has been refactored into a multi-project solution with clear separation of concerns:
+The Rhymers project has been refactored into a multi-project solution with clear separation of concerns:
 
 ```
 /src/
-  ├── VoteCounter.Core/          # Business Logic & Data Models
+  ├── Rhymers.Core/          # Business Logic & Data Models
   │   ├── Models/                # Domain models (Contest, Vote, etc.)
   │   ├── Services/              # Business logic services
   │   │   ├── VoteParser.cs
@@ -16,7 +16,7 @@ The VoteCounter project has been refactored into a multi-project solution with c
   │   │   └── ... (other services)
   │   └── GlobalUsings.cs
   │
-  ├── VoteCounter.Data/          # Data Access Layer
+  ├── Rhymers.Data/          # Data Access Layer
   │   ├── Database/              # Database-related services
   │   │   ├── LocalDatabase.cs   # SQLite connection & management
   │   │   ├── LocalStore.cs      # Local data persistence
@@ -24,9 +24,9 @@ The VoteCounter project has been refactored into a multi-project solution with c
   │   │   ├── FirebirdLegacyImporter.cs
   │   │   └── GlobalUsings.cs
   │   ├── Schema/                # SQL schema files
-  │   └── VoteCounter.Data.csproj
+  │   └── Rhymers.Data.csproj
   │
-  └── VoteCounter.Desktop/       # WinForms UI Application
+  └── Rhymers.Desktop/       # WinForms UI Application
       ├── Forms/                 # UI forms
       │   ├── MainForm.cs
       │   ├── MainForm.resx
@@ -37,12 +37,12 @@ The VoteCounter project has been refactored into a multi-project solution with c
       ├── LayoutIniStore.cs      # UI layout persistence
       ├── Program.cs             # Application entry point
       ├── GlobalUsings.cs
-      └── VoteCounter.Desktop.csproj
+      └── Rhymers.Desktop.csproj
 ```
 
 ## Projects
 
-### VoteCounter.Core
+### Rhymers.Core
 - **Type:** Class Library (.NET 8)
 - **Dependencies:** None (no external references)
 - **Purpose:** Domain models and business logic
@@ -50,18 +50,18 @@ The VoteCounter project has been refactored into a multi-project solution with c
   - Models: All data model classes
   - Services: Business logic for vote processing, contest management, etc.
 
-### VoteCounter.Data
+### Rhymers.Data
 - **Type:** Class Library (.NET 8)
-- **Dependencies:** VoteCounter.Core, Microsoft.Data.Sqlite, FirebirdSql.Data.FirebirdClient
+- **Dependencies:** Rhymers.Core, Microsoft.Data.Sqlite, FirebirdSql.Data.FirebirdClient
 - **Purpose:** Data access and database management
 - **Contents:**
   - Database services for SQLite and Firebird
   - SQL schema definitions
   - Data persistence and import logic
 
-### VoteCounter.Desktop
+### Rhymers.Desktop
 - **Type:** WinForms Application (.NET 8 Windows)
-- **Dependencies:** VoteCounter.Core, VoteCounter.Data, DevExpress
+- **Dependencies:** Rhymers.Core, Rhymers.Data, DevExpress
 - **Purpose:** User interface and application runtime
 - **Contents:**
   - WinForms UI components
@@ -71,24 +71,24 @@ The VoteCounter project has been refactored into a multi-project solution with c
 ## Namespace Structure
 
 ```
-VoteCounter.Core.Models        → Core domain models
-VoteCounter.Core.Services      → Core business logic services
-VoteCounter.Data.Database      → Data access services
-VoteCounter.Desktop            → UI and application
+Rhymers.Core.Models        → Core domain models
+Rhymers.Core.Services      → Core business logic services
+Rhymers.Data.Database      → Data access services
+Rhymers.Desktop            → UI and application
 ```
 
-### VoteCounter.Tests
+### Rhymers.Tests
 - **Type:** Unit Tests Project (.NET 9)
-- **Dependencies:** VoteCounter.Core, VoteCounter.Data, xUnit, Moq, FluentAssertions
+- **Dependencies:** Rhymers.Core, Rhymers.Data, xUnit, Moq, FluentAssertions
 - **Purpose:** Unit testing for all layers
 - **Contents:**
   - Models Tests: VoteEntry, Contest, etc.
   - Services Tests: VoteParser, VoteRuleService, NameNormalizer, etc.
   - Fixtures and test utilities
 
-### VoteCounter.Web
+### Rhymers.Web
 - **Type:** Blazor Web App (.NET 9)
-- **Dependencies:** VoteCounter.Core, VoteCounter.Data, Blazor Runtime
+- **Dependencies:** Rhymers.Core, Rhymers.Data, Blazor Runtime
 - **Purpose:** Web user interface for contest management and voting
 - **Key Components:**
   - Services/ContestService.cs: Business logic for contest management
@@ -98,9 +98,9 @@ VoteCounter.Desktop            → UI and application
   - Components/Pages/ContestResults.razor: Results display interface
 - **Architecture:** Blazor Server Components with service-based architecture
 
-### VoteCounter.Api
+### Rhymers.Api
 - **Type:** ASP.NET Core Web API (.NET 9)
-- **Dependencies:** VoteCounter.Core, VoteCounter.Data, Swagger/OpenAPI
+- **Dependencies:** Rhymers.Core, Rhymers.Data, Swagger/OpenAPI
 - **Purpose:** REST API endpoints for external applications
 - **Key Controllers:**
   - ContestsController: CRUD operations for contests
@@ -116,24 +116,24 @@ VoteCounter.Desktop            → UI and application
 
 ### Build All Projects
 ```bash
-dotnet build VoteCounter.sln
+dotnet build Rhymers.sln
 ```
 
 ### Run Tests
 ```bash
-dotnet test VoteCounter.sln
+dotnet test Rhymers.sln
 ```
 
 ### Run API Server
 ```bash
-dotnet run --project src/VoteCounter.Api/VoteCounter.Api.csproj
+dotnet run --project src/Rhymers.Api/Rhymers.Api.csproj
 # Open: https://localhost:7070 (Swagger UI)
 # Open: http://localhost:5070 (development)
 ```
 
 ### Run Blazor Web
 ```bash
-dotnet run --project src/VoteCounter.Web/VoteCounter.Web.csproj
+dotnet run --project src/Rhymers.Web/Rhymers.Web.csproj
 # Open: https://localhost:7070 (Blazor interface)
 ```
 
@@ -143,12 +143,12 @@ All services are registered using Microsoft.Extensions.DependencyInjection:
 
 ### Core Services (Singleton)
 ```csharp
-builder.Services.AddVoteCounterCore();
+builder.Services.AddRhymersCore();
 ```
 
 ### Data Services (Singleton)
 ```csharp
-builder.Services.AddVoteCounterData();
+builder.Services.AddRhymersData();
 ```
 
 See [DEPENDENCY_INJECTION.md](DEPENDENCY_INJECTION.md) for complete DI documentation.
@@ -156,10 +156,10 @@ See [DEPENDENCY_INJECTION.md](DEPENDENCY_INJECTION.md) for complete DI documenta
 ## Project Dependencies
 
 ```
-VoteCounter.Web ──┐
-VoteCounter.Api ──┼──> VoteCounter.Core
-VoteCounter.Tests ┤    VoteCounter.Data
-                  └──> VoteCounter.Data
+Rhymers.Web ──┐
+Rhymers.Api ──┼──> Rhymers.Core
+Rhymers.Tests ┤    Rhymers.Data
+                  └──> Rhymers.Data
 ```
 
 ```bash
@@ -167,10 +167,10 @@ VoteCounter.Tests ┤    VoteCounter.Data
 dotnet build
 
 # Run the application
-dotnet run --project src/VoteCounter.Desktop/VoteCounter.Desktop.csproj
+dotnet run --project src/Rhymers.Desktop/Rhymers.Desktop.csproj
 
 # Build solution
-dotnet build VoteCounter.sln
+dotnet build Rhymers.sln
 ```
 
 ## Benefits of This Architecture
@@ -182,7 +182,7 @@ dotnet build VoteCounter.sln
 
 2. **Reusability**
    - Core and Data projects can be used in other applications (console, web, etc.)
-   - Easy to add VoteCounter.Web or VoteCounter.Console projects
+   - Easy to add Rhymers.Web or Rhymers.Console projects
 
 3. **Testability**
    - Each project can be tested independently
@@ -194,7 +194,7 @@ dotnet build VoteCounter.sln
 
 ## Future Improvements
 
-- Add `VoteCounter.Tests` project for unit tests
-- Add `VoteCounter.Web` project for web interface (ASP.NET/Blazor)
+- Add `Rhymers.Tests` project for unit tests
+- Add `Rhymers.Web` project for web interface (ASP.NET/Blazor)
 - Implement dependency injection containers
 - Add API project for REST endpoints

@@ -1,8 +1,8 @@
-# VoteCounter REST API Documentation
+# Rhymers REST API Documentation
 
 ## Overview
 
-The VoteCounter REST API provides endpoints for contest management, vote processing, and results generation.
+The Rhymers REST API provides endpoints for contest management, vote processing, and results generation.
 
 **Base URL:** `https://localhost:7070/api` (development)
 **API Version:** v1
@@ -238,7 +238,7 @@ GET /api/version
 ```json
 {
   "version": "1.0.0",
-  "name": "VoteCounter API",
+  "name": "Rhymers API",
   "timestamp": "2026-07-04T12:00:00Z"
 }
 ```
@@ -270,7 +270,7 @@ GET /api/version
 
 ```bash
 # Start the API server
-dotnet run --project src/VoteCounter.Api/VoteCounter.Api.csproj
+dotnet run --project src/Rhymers.Api/Rhymers.Api.csproj
 
 # The server will start on:
 # https://localhost:7070 (production)

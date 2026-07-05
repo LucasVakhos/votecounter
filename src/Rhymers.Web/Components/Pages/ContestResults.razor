@@ -1,0 +1,16 @@
+@page "/contests/{ContestId:int}/results"
+@using Rhymers.Core.Models
+@using Rhymers.Web.Services
+@inject ContestService ContestService
+@inject VoteService VoteService
+
+<div class="container mt-4">
+    <h1>Результаты конкурса</h1>
+    <p>Contest ID: @ContestId</p>
+    <a href="/contests" class="btn btn-secondary">← Назад</a>
+</div>
+
+@code {
+    [Parameter]
+    public int ContestId { get; set; }
+}

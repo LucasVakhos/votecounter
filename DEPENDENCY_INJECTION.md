@@ -2,28 +2,28 @@
 
 ## Overview
 
-The VoteCounter solution uses Microsoft.Extensions.DependencyInjection for inversion of control and loose coupling between layers.
+The Rhymers solution uses Microsoft.Extensions.DependencyInjection for inversion of control and loose coupling between layers.
 
 ## Architecture
 
 ### Service Layers
 
-**VoteCounter.Core** - Business Logic & Processing
+**Rhymers.Core** - Business Logic & Processing
 - Vote parsing and validation services
 - Contest management and results generation
 - Text processing utilities
 - Import and export functionality
 
-**VoteCounter.Data** - Data Access Layer
+**Rhymers.Data** - Data Access Layer
 - Database connectivity
 - Data store implementations
 - Legacy system importers
 
-**VoteCounter.Api** - REST API
+**Rhymers.Api** - REST API
 - HTTP Controllers with injected services
 - Stateless request processing
 
-**VoteCounter.Web** - Blazor Web Interface
+**Rhymers.Web** - Blazor Web Interface
 - Server components with scoped services
 - UI business logic
 
@@ -32,7 +32,7 @@ The VoteCounter solution uses Microsoft.Extensions.DependencyInjection for inver
 ### Core Services (Singleton)
 
 ```csharp
-builder.Services.AddVoteCounterCore();
+builder.Services.AddRhymersCore();
 ```
 
 Registers:
@@ -53,7 +53,7 @@ Registers:
 ### Data Services (Singleton)
 
 ```csharp
-builder.Services.AddVoteCounterData();
+builder.Services.AddRhymersData();
 ```
 
 Registers:
@@ -64,16 +64,16 @@ Registers:
 
 ### Web Services (Scoped)
 
-**VoteCounter.Api/Program.cs:**
+**Rhymers.Api/Program.cs:**
 ```csharp
-builder.Services.AddVoteCounterCore();
-builder.Services.AddVoteCounterData();
+builder.Services.AddRhymersCore();
+builder.Services.AddRhymersData();
 ```
 
-**VoteCounter.Web/Program.cs:**
+**Rhymers.Web/Program.cs:**
 ```csharp
-builder.Services.AddVoteCounterCore();
-builder.Services.AddVoteCounterData();
+builder.Services.AddRhymersCore();
+builder.Services.AddRhymersData();
 builder.Services.AddScoped<ContestService>();
 builder.Services.AddScoped<VoteService>();
 ```
@@ -151,8 +151,8 @@ public class VoteService
 
 ```csharp
 var services = new ServiceCollection();
-services.AddVoteCounterCore();
-services.AddVoteCounterData();
+services.AddRhymersCore();
+services.AddRhymersData();
 var provider = services.BuildServiceProvider();
 
 var voteParser = provider.GetRequiredService<VoteParser>();

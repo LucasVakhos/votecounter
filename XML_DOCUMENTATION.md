@@ -1,13 +1,13 @@
-# XML Documentation - VoteCounter API
+# XML Documentation - Rhymers API
 
 ## Overview
 
-This document describes the XML documentation applied to VoteCounter services and models.
+This document describes the XML documentation applied to Rhymers services and models.
 
-## VoteCounter.Core Services
+## Rhymers.Core Services
 
 ### VoteParser
-**Location:** [src/VoteCounter.Core/Services/VoteParser.cs](src/VoteCounter.Core/Services/VoteParser.cs)
+**Location:** [src/Rhymers.Core/Services/VoteParser.cs](src/Rhymers.Core/Services/VoteParser.cs)
 
 Parses vote text from social media posts or form submissions into structured vote blocks.
 
@@ -23,7 +23,7 @@ public ImportResult Parse(string text, string contestId, Contest? contest = null
 ---
 
 ### VoteRuleService
-**Location:** [src/VoteCounter.Core/Services/VoteRuleService.cs](src/VoteCounter.Core/Services/VoteRuleService.cs)
+**Location:** [src/Rhymers.Core/Services/VoteRuleService.cs](src/Rhymers.Core/Services/VoteRuleService.cs)
 
 Applies voting rules from Rhyme Machine contest system.
 
@@ -40,7 +40,7 @@ public void Apply(Contest contest, ImportResult result)
 ---
 
 ### ContestResultsService
-**Location:** [src/VoteCounter.Core/Services/ContestResultsService.cs](src/VoteCounter.Core/Services/ContestResultsService.cs)
+**Location:** [src/Rhymers.Core/Services/ContestResultsService.cs](src/Rhymers.Core/Services/ContestResultsService.cs)
 
 Generates contest results reports with rankings and statistics.
 
@@ -68,7 +68,7 @@ public string BuildWinnersText(ContestResultsReport report)
 ---
 
 ### NameNormalizer
-**Location:** [src/VoteCounter.Core/Services/NameNormalizer.cs](src/VoteCounter.Core/Services/NameNormalizer.cs)
+**Location:** [src/Rhymers.Core/Services/NameNormalizer.cs](src/Rhymers.Core/Services/NameNormalizer.cs)
 
 Static utility for name normalization and comparison with performance optimization.
 
@@ -96,10 +96,10 @@ public static void ClearCache()
 
 ---
 
-## VoteCounter.Core Models
+## Rhymers.Core Models
 
 ### Contest
-**Location:** [src/VoteCounter.Core/Models/Contest.cs](src/VoteCounter.Core/Models/Contest.cs)
+**Location:** [src/Rhymers.Core/Models/Contest.cs](src/Rhymers.Core/Models/Contest.cs)
 
 Represents a single contest with voting rules and metadata.
 
@@ -116,7 +116,7 @@ Represents a single contest with voting rules and metadata.
 ---
 
 ### VoteEntry
-**Location:** [src/VoteCounter.Core/Models/VoteEntry.cs](src/VoteCounter.Core/Models/VoteEntry.cs)
+**Location:** [src/Rhymers.Core/Models/VoteEntry.cs](src/Rhymers.Core/Models/VoteEntry.cs)
 
 Represents a single vote entry for a work in a contest.
 
@@ -133,7 +133,7 @@ Represents a single vote entry for a work in a contest.
 ---
 
 ### ParsedVoteBlock
-**Location:** [src/VoteCounter.Core/Models/ParsedVoteBlock.cs](src/VoteCounter.Core/Models/ParsedVoteBlock.cs)
+**Location:** [src/Rhymers.Core/Models/ParsedVoteBlock.cs](src/Rhymers.Core/Models/ParsedVoteBlock.cs)
 
 Represents a block of votes from a single voter.
 
@@ -144,7 +144,7 @@ Represents a block of votes from a single voter.
 ---
 
 ### ImportResult
-**Location:** [src/VoteCounter.Core/Models/ParsedVoteBlock.cs](src/VoteCounter.Core/Models/ParsedVoteBlock.cs)
+**Location:** [src/Rhymers.Core/Models/ParsedVoteBlock.cs](src/Rhymers.Core/Models/ParsedVoteBlock.cs)
 
 Result of parsing vote text, containing blocks and validation warnings.
 
@@ -157,7 +157,7 @@ Result of parsing vote text, containing blocks and validation warnings.
 ---
 
 ### ContestRatingRow
-**Location:** [src/VoteCounter.Core/Models/ContestRatingRow.cs](src/VoteCounter.Core/Models/ContestRatingRow.cs)
+**Location:** [src/Rhymers.Core/Models/ContestRatingRow.cs](src/Rhymers.Core/Models/ContestRatingRow.cs)
 
 Represents ranking information for a single work in contest results.
 
@@ -174,7 +174,7 @@ Represents ranking information for a single work in contest results.
 ---
 
 ### ContestResultsReport
-**Location:** [src/VoteCounter.Core/Models/ContestResultsReport.cs](src/VoteCounter.Core/Models/ContestResultsReport.cs)
+**Location:** [src/Rhymers.Core/Models/ContestResultsReport.cs](src/Rhymers.Core/Models/ContestResultsReport.cs)
 
 Contains the complete results of a contest including rankings and statistics.
 
@@ -190,7 +190,7 @@ Contains the complete results of a contest including rankings and statistics.
 
 ## API Documentation
 
-The VoteCounter.Api project provides REST endpoints with Swagger/OpenAPI documentation.
+The Rhymers.Api project provides REST endpoints with Swagger/OpenAPI documentation.
 
 ### Endpoints
 
@@ -228,7 +228,7 @@ dotnet build -c Release
 
 # Use DocFX or similar tool to generate documentation
 # Example with DocFX:
-docfx VoteCounter.Core/docfx.json
+docfx Rhymers.Core/docfx.json
 
 # Or use Sandcastle Help File Builder (Windows only)
 ```
@@ -321,7 +321,7 @@ Visual Studio automatically reads XML documentation and displays it in:
 
 ## Summary
 
-All public APIs in VoteCounter.Core have been documented with XML comments including:
+All public APIs in Rhymers.Core have been documented with XML comments including:
 - ✅ Class and interface summaries
 - ✅ Public method documentation
 - ✅ Parameter descriptions

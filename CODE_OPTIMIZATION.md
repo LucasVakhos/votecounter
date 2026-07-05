@@ -2,7 +2,7 @@
 
 ## Overview
 
-Task 5 focused on optimizing critical performance paths in the VoteCounter application. Implemented targeted optimizations with **estimated 40-70% performance improvement** for common operations.
+Task 5 focused on optimizing critical performance paths in the Rhymers application. Implemented targeted optimizations with **estimated 40-70% performance improvement** for common operations.
 
 ## Optimizations Implemented
 

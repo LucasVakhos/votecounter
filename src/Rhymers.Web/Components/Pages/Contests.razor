@@ -1,0 +1,18 @@
+@page "/contests"
+@using Rhymers.Core.Models
+@using Rhymers.Web.Services
+@inject ContestService ContestService
+
+<div class="container mt-4">
+    <h1>Конкурсы</h1>
+    <p>@contests.Count конкурсов</p>
+</div>
+
+@code {
+    private List<Contest> contests = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        contests = (await ContestService.GetContestsAsync()).ToList();
+    }
+}

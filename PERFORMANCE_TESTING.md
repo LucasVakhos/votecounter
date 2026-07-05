@@ -2,12 +2,12 @@
 
 ## Overview
 
-This document describes performance benchmarks for VoteCounter services, validating the +40-70% performance improvements from Task 5 optimizations.
+This document describes performance benchmarks for Rhymers services, validating the +40-70% performance improvements from Task 5 optimizations.
 
 ## Benchmark Tests
 
 ### 1. NameNormalizerBenchmarks
-**Location:** [src/VoteCounter.Tests/NameNormalizerBenchmarks.cs](src/VoteCounter.Tests/NameNormalizerBenchmarks.cs)
+**Location:** [src/Rhymers.Tests/NameNormalizerBenchmarks.cs](src/Rhymers.Tests/NameNormalizerBenchmarks.cs)
 
 Validates name normalization performance with caching optimization.
 
@@ -28,7 +28,7 @@ Validates name normalization performance with caching optimization.
 ---
 
 ### 2. VoteParserBenchmarks
-**Location:** [src/VoteCounter.Tests/VoteParserBenchmarks.cs](src/VoteCounter.Tests/VoteParserBenchmarks.cs)
+**Location:** [src/Rhymers.Tests/VoteParserBenchmarks.cs](src/Rhymers.Tests/VoteParserBenchmarks.cs)
 
 Validates vote parsing performance with NameNormalizer caching.
 
@@ -45,7 +45,7 @@ Validates vote parsing performance with NameNormalizer caching.
 ---
 
 ### 3. VoteRuleServiceBenchmarks
-**Location:** [src/VoteCounter.Tests/VoteRuleServiceBenchmarks.cs](src/VoteCounter.Tests/VoteRuleServiceBenchmarks.cs)
+**Location:** [src/Rhymers.Tests/VoteRuleServiceBenchmarks.cs](src/Rhymers.Tests/VoteRuleServiceBenchmarks.cs)
 
 Validates vote rule application with pre-computed topic keys.
 
@@ -63,7 +63,7 @@ Validates vote rule application with pre-computed topic keys.
 ---
 
 ### 4. ContestResultsServiceBenchmarks
-**Location:** [src/VoteCounter.Tests/VoteRuleServiceBenchmarks.cs](src/VoteCounter.Tests/VoteRuleServiceBenchmarks.cs)
+**Location:** [src/Rhymers.Tests/VoteRuleServiceBenchmarks.cs](src/Rhymers.Tests/VoteRuleServiceBenchmarks.cs)
 
 Validates contest results generation performance.
 
@@ -89,7 +89,7 @@ Validates contest results generation performance.
 dotnet build -c Release
 
 # Run benchmarks
-dotnet run -c Release --project src/VoteCounter.Tests/VoteCounter.Tests.csproj --
+dotnet run -c Release --project src/Rhymers.Tests/Rhymers.Tests.csproj --
 --method "*" --warmupCount 3 --targetCount 5
 ```
 
@@ -97,11 +97,11 @@ dotnet run -c Release --project src/VoteCounter.Tests/VoteCounter.Tests.csproj -
 
 ```bash
 # Run only NameNormalizer benchmarks
-dotnet run -c Release --project src/VoteCounter.Tests/VoteCounter.Tests.csproj --
+dotnet run -c Release --project src/Rhymers.Tests/Rhymers.Tests.csproj --
 --filter "*NameNormalizer*"
 
 # Run only VoteParser benchmarks
-dotnet run -c Release --project src/VoteCounter.Tests/VoteCounter.Tests.csproj --
+dotnet run -c Release --project src/Rhymers.Tests/Rhymers.Tests.csproj --
 --filter "*VoteParser*"
 ```
 
@@ -200,7 +200,7 @@ foreach (var block in result.Blocks)
 
 ```bash
 # Generate HTML report
-dotnet run -c Release --project src/VoteCounter.Tests \
+dotnet run -c Release --project src/Rhymers.Tests \
   --filter "*" \
   --exportJson benchmarks.json
 
