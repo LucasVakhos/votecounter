@@ -1,6 +1,6 @@
 import cors from "cors";
 import express from "express";
-import { dbFile } from "./db.js";
+import { dbFile, schemaVersion } from "./db.js";
 import { contestsRouter } from "./routes/contests.js";
 import { discussionsRouter } from "./routes/discussions.js";
 import { sorrowRouter } from "./routes/sorrow.js";
@@ -13,7 +13,7 @@ export function createApp(): express.Express {
   app.use(express.json());
 
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, service: "rhymers-ts-api", storage: "sqlite", dbFile });
+    res.json({ ok: true, service: "rhymers-ts-api", storage: "sqlite", dbFile, schemaVersion });
   });
 
   app.use("/api/contests", contestsRouter);
