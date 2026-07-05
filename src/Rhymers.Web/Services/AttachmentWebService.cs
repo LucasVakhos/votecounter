@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Components.Forms;
 using Rhymers.Core.Models;
 using Rhymers.Core.Services;
 
@@ -60,6 +61,48 @@ public sealed class AttachmentWebService
             file.Length,
             file.ContentType,
             Path.GetFileNameWithoutExtension(file.FileName)
+        );
+    }
+
+    /// <summary>
+    /// Загрузить картинку из Blazor InputFile и вернуть информацию о вложении
+    /// </summary>
+    public async Task<MessageAttachment> UploadImageAsync(string messageId, IBrowserFile file, MessageAttachmentType messageType)
+    {
+        if (file.Size == 0)
+            throw new ArgumentException("Файл пуст");
+
+        var allowedMimes = new[] { "image/jpeg", "image/png", "image/gif", "image/webp" };
+        if (!allowedMimes.Contains(file.ContentType))
+            throw new ArgumentException("Недопустимый формат изображения. Допускаются JPEG, PNG, GIF, WebP");
+
+        const long maxSize = 5 * 1024 * 1024;
+        if (file.Size > maxSize)
+            throw new ArgumentException("Размер файла превышает 5MB");
+
+        var uploadsPath = Path.Combine(_environment.WebRootPath, "uploads", "attachments");
+        if (!Directory.Exists(uploadsPath))
+            Directory.CreateDirectory(uploadsPath);
+
+        var fileName = $"{Guid.NewGuid()}{Path.GetExtension(file.Name)}";
+        var filePath = Path.Combine(uploadsPath, fileName);
+
+        await using (var sourceStream = file.OpenReadStream(maxSize))
+        await using (var targetStream = new FileStream(filePath, FileMode.Create))
+        {
+            await sourceStream.CopyToAsync(targetStream);
+        }
+
+        var fileUrl = $"/uploads/attachments/{fileName}";
+        return await _attachmentService.AddAttachmentAsync(
+            messageId,
+            messageType,
+            AttachmentType.Image,
+            fileUrl,
+            file.Name,
+            file.Size,
+            file.ContentType,
+            Path.GetFileNameWithoutExtension(file.Name)
         );
     }
 

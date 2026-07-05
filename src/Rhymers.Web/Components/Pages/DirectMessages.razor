@@ -1,5 +1,7 @@
 @page "/direct-messages"
 @page "/direct-messages/{otherUserId}"
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Web
 @using Rhymers.Core.Models
 @using Rhymers.Web.Services
 @inject AuthorizationWebService AuthService
@@ -261,18 +263,8 @@
 
         var lastMessageId = messages.Last().Message.Id;
 
-        using var stream = e.File.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
-        var form = new MultipartFormDataContent();
-        form.Add(new StreamContent(stream), "file", e.File.Name);
-
-        var response = await new HttpClient().PostAsync(
-            $"/api/messages/{lastMessageId}/upload-image?messageType=direct",
-            form);
-
-        if (response.IsSuccessStatusCode)
-        {
-            await SelectDialog(selectedOtherUserId);
-        }
+        await AttachmentService.UploadImageAsync(lastMessageId, e.File, MessageAttachmentType.DirectMessage);
+        await SelectDialog(selectedOtherUserId);
     }
 
     private async Task ShowEmojiPicker()

@@ -1,7 +1,9 @@
 @page "/contest/{ContestId}/sorrow"
+@using Microsoft.AspNetCore.Components.Forms
 @using Rhymers.Web.Services
 @using Rhymers.Core.Models
 @inject SorrowChatWebService SorrowService
+@inject AttachmentWebService AttachmentService
 @inject DiscussionService DiscussionService
 @inject AuthorizationWebService AuthService
 @inject ContestService ContestService
@@ -166,6 +168,41 @@
                             <small class="form-text text-muted">Максимум 2000 символов</small>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="form-label">Картинка (опционально)</label>
+                            <InputFile OnChange="HandleDraftImageSelectedAsync"
+                                       accept="image/jpeg,image/png,image/gif,image/webp"
+                                       class="form-control form-control-sm" />
+                            @if (!string.IsNullOrEmpty(draftImageName))
+                            {
+                                <div class="mt-2 d-flex align-items-center gap-2">
+                                    <small class="text-muted">📎 @draftImageName</small>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ClearDraftImage">
+                                        Убрать
+                                    </button>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Эмодзи (опционально)</label>
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach (var option in emojiOptions)
+                                {
+                                    <button type="button"
+                                            class="btn btn-sm @(pendingEmojiCodes.Contains(option.Value) ? "btn-primary" : "btn-outline-secondary")"
+                                            title="@option.Value"
+                                            @onclick="() => TogglePendingEmoji(option.Value)">
+                                        @option.Key
+                                    </button>
+                                }
+                            </div>
+                            @if (pendingEmojiCodes.Count > 0)
+                            {
+                                <small class="text-muted d-block mt-2">Выбрано эмодзи: @string.Join(" ", pendingEmojiCodes.Select(GetEmojiByCode))</small>
+                            }
+                        </div>
+
                         <div class="d-flex justify-content-between">
                             <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
                                 @if (isSubmitting)
@@ -272,6 +309,23 @@
 
                                 <p class="card-text">@msg.Content</p>
 
+                                @if (messageAttachments.TryGetValue(msg.Id, out var attachments) && attachments.Count > 0)
+                                {
+                                    <div class="d-flex flex-column gap-2 mb-2">
+                                        @foreach (var attachment in attachments)
+                                        {
+                                            @if (attachment.Type == AttachmentType.Image)
+                                            {
+                                                <img src="@attachment.FileUrl" alt="@attachment.AltText" style="max-width: 100%; max-height: 320px; border-radius: 8px;" />
+                                            }
+                                            else if (attachment.Type == AttachmentType.Emoji)
+                                            {
+                                                <div style="font-size: 1.6rem;">@attachment.FileUrl</div>
+                                            }
+                                        }
+                                    </div>
+                                }
+
                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <button class="btn btn-sm btn-outline-heart" @onclick="async () => await AddEmpathyAsync(msg.Id)">
                                     ❤️ @msg.EmpathyCount
@@ -297,8 +351,8 @@
                                     <button class="btn btn-sm btn-outline-success" @onclick="async () => await ApproveAsync(msg.Id)" disabled="@msg.IsApproved">
                                         ✓ Одобрить
                                     </button>
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="async () => await HideAsync(msg.Id)" disabled="@msg.IsHidden">
-                                        🚫 Скрыть
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="async () => await DeleteMessageAsync(msg.Id)" disabled="@msg.IsHidden">
+                                        🗑️ Удалить
                                     </button>
                                     <button class="btn btn-sm btn-outline-danger" @onclick="() => ToggleViolationForm(msg.Id)">
                                         🚩 Хамство
@@ -562,6 +616,11 @@
     private string appealMessage = string.Empty;
     private bool appealSuccess = false;
     private bool submittingAppeal = false;
+    private IBrowserFile? draftImageFile;
+    private string? draftImageName;
+    private readonly List<string> pendingEmojiCodes = new();
+    private readonly Dictionary<string, string> emojiDictionary = new();
+    private readonly Dictionary<string, List<MessageAttachment>> messageAttachments = new();
     
     // Reply system state
     private string? expandedDiscussionMessageId = null;
@@ -585,6 +644,12 @@
     {
         currentUser = await AuthService.GetCurrentUserAsync();
         var contestId = ContestId ?? "contest-1";
+
+        emojiDictionary.Clear();
+        foreach (var pair in AttachmentService.GetEmojiDictionary())
+        {
+            emojiDictionary[pair.Key] = pair.Value;
+        }
         
         await LoadMessagesAsync(contestId);
         await LoadReviewsAsync(contestId);
@@ -609,6 +674,11 @@
         try
         {
             messages = await SorrowService.GetApprovedSorrowMessagesAsync(contestId);
+            messageAttachments.Clear();
+            foreach (var sorrowMessage in messages)
+            {
+                messageAttachments[sorrowMessage.Id] = await AttachmentService.GetAttachmentsAsync(sorrowMessage.Id);
+            }
         }
         catch (Exception ex)
         {
@@ -638,12 +708,16 @@
         {
             isSubmitting = true;
             var contestId = ContestId ?? "contest-1";
-            await SorrowService.AddSorrowMessageAsync(contestId, newMessage);
+            var createdMessage = await SorrowService.AddSorrowMessageAsync(contestId, newMessage);
+
+            await AttachDraftsToMessageAsync(createdMessage.Id);
 
             message = "✅ Спасибо за ваше переживание! Модератор его проверит.";
             isSuccess = true;
 
             newMessage = new();
+            ClearDraftImage();
+            pendingEmojiCodes.Clear();
             await LoadMessagesAsync(contestId);
             await LoadStatsAsync(contestId);
 
@@ -701,6 +775,54 @@
         catch (Exception ex)
         {
             message = $"Ошибка при скрытии: {ex.Message}";
+        }
+    }
+
+    private Task DeleteMessageAsync(string messageId)
+    {
+        // Keep current moderation behavior: "delete" action performs a soft hide.
+        return HideAsync(messageId);
+    }
+
+    private IEnumerable<KeyValuePair<string, string>> emojiOptions => emojiDictionary.OrderBy(x => x.Value);
+
+    private async Task HandleDraftImageSelectedAsync(InputFileChangeEventArgs e)
+    {
+        draftImageFile = e.File;
+        draftImageName = e.File.Name;
+        await Task.CompletedTask;
+    }
+
+    private void ClearDraftImage()
+    {
+        draftImageFile = null;
+        draftImageName = null;
+    }
+
+    private void TogglePendingEmoji(string emojiCode)
+    {
+        if (pendingEmojiCodes.Contains(emojiCode))
+            pendingEmojiCodes.Remove(emojiCode);
+        else
+            pendingEmojiCodes.Add(emojiCode);
+    }
+
+    private string GetEmojiByCode(string emojiCode)
+    {
+        var pair = emojiDictionary.FirstOrDefault(x => x.Value == emojiCode);
+        return string.IsNullOrEmpty(pair.Key) ? emojiCode : pair.Key;
+    }
+
+    private async Task AttachDraftsToMessageAsync(string messageId)
+    {
+        if (draftImageFile != null)
+        {
+            await AttachmentService.UploadImageAsync(messageId, draftImageFile, MessageAttachmentType.SorrowChat);
+        }
+
+        foreach (var emojiCode in pendingEmojiCodes)
+        {
+            await AttachmentService.AddEmojiAsync(messageId, emojiCode, MessageAttachmentType.SorrowChat);
         }
     }
 
