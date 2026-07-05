@@ -45,6 +45,7 @@ public sealed class RhymersDbContext : DbContext
             entity.HasIndex(c => c.Number).IsUnique();
             entity.Property(c => c.Number).HasMaxLength(10).IsRequired();
             entity.Property(c => c.Name).HasMaxLength(256).IsRequired();
+            entity.Property(c => c.MaxTopicsCount).HasDefaultValue(0);
             entity.Property(c => c.IsActive).HasDefaultValue(true);
             entity.Property(c => c.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
@@ -78,8 +79,14 @@ public sealed class RhymersDbContext : DbContext
         // ContestTopic конфигурация
         modelBuilder.Entity<ContestTopic>(entity =>
         {
-            entity.HasKey(t => new { t.Number });
+            entity.ToTable("ContestTopics");
+            entity.HasKey(t => new { t.ContestId, t.Number });
+            entity.Property(t => t.ContestId).HasMaxLength(256).IsRequired();
             entity.Property(t => t.Title).HasMaxLength(512);
+            entity.Property(t => t.ProposedBy).HasMaxLength(256);
+            entity.Property(t => t.IsWinnerTopic).HasDefaultValue(false);
+            entity.Property(t => t.SubmittedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasIndex(t => t.ContestId);
         });
 
         // VoterSetting конфигурация

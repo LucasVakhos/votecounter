@@ -178,6 +178,7 @@ public sealed class PersistenceService
     {
         // Создать таблицы
         await _context.Database.EnsureCreatedAsync();
+        await EnsureSchemaExtensionsAsync();
 
         // Проверить есть ли уже конкурсы
         var contestCount = await _context.Contests.CountAsync();
@@ -226,5 +227,66 @@ public sealed class PersistenceService
                 // Пользователи уже существуют, игнорируем ошибку
             }
         }
+    }
+
+    private async Task EnsureSchemaExtensionsAsync()
+    {
+        await EnsureColumnAsync("Contests", "MaxTopicsCount", "INTEGER NOT NULL DEFAULT 0");
+
+        await _context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS ContestTopics(
+                ContestId TEXT NOT NULL,
+                Number INTEGER NOT NULL,
+                Title TEXT NOT NULL,
+                ProposedBy TEXT NOT NULL DEFAULT '',
+                IsWinnerTopic INTEGER NOT NULL DEFAULT 0,
+                SubmittedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(ContestId, Number)
+            );");
+
+        await EnsureColumnAsync("ContestTopics", "ProposedBy", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync("ContestTopics", "IsWinnerTopic", "INTEGER NOT NULL DEFAULT 0");
+        await EnsureColumnAsync("ContestTopics", "SubmittedAt", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP");
+    }
+
+    private async Task EnsureColumnAsync(string tableName, string columnName, string columnDefinition)
+    {
+        if (!IsSafeSqlIdentifier(tableName) || !IsSafeSqlIdentifier(columnName))
+            throw new InvalidOperationException("Invalid SQL identifier for schema update.");
+
+        var connection = _context.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+            await connection.OpenAsync();
+
+        await using var check = connection.CreateCommand();
+        check.CommandText = $"PRAGMA table_info({tableName});";
+
+        var exists = false;
+        await using (var reader = await check.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+
+        if (exists)
+            return;
+
+        await using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition};";
+        await alter.ExecuteNonQueryAsync();
+    }
+
+    private static bool IsSafeSqlIdentifier(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        return value.All(ch => char.IsLetterOrDigit(ch) || ch == '_');
     }
 }

@@ -57,6 +57,12 @@
         @if (currentUser?.Role >= UserRole.Moderator)
         {
             <div class="nav-item px-3">
+                <NavLink class="nav-link" href="contests/opening">
+                    <span class="oi oi-plus" aria-hidden="true"></span> 🚀 Открытие конкурса
+                </NavLink>
+            </div>
+
+            <div class="nav-item px-3">
                 <NavLink class="nav-link" href="moderation-queue">
                     <span class="oi oi-magnifying-glass" aria-hidden="true"></span> 🔍 Модерация
                 </NavLink>

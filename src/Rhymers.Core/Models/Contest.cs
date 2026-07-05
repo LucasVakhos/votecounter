@@ -37,6 +37,9 @@ public sealed class Contest
     // false - таблицу ведёт сторонний счётчик до раскрытия, авторы скрыты как "Неизвестный автор".
     public bool HostKnowsAuthors { get; set; } = true;
 
+    // 0 = без ограничения, >0 = максимальное количество тем в конкурсе.
+    public int MaxTopicsCount { get; set; } = 0;
+
     public List<ContestTopic> Topics { get; set; } = new();
     public List<ContestWork> Works { get; set; } = new();
     public List<VoterSetting> Voters { get; set; } = new();

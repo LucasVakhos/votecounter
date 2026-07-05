@@ -1,0 +1,234 @@
+@page "/contests/opening"
+@using Rhymers.Core.Models
+@using Rhymers.Web.Services
+@inject ContestService ContestService
+@inject AuthorizationWebService AuthService
+
+<div class="container mt-4">
+    <h1>Открытие конкурса</h1>
+    <p class="text-muted">Объявление, приём тем и приоритет тем победителей прошлого конкурса.</p>
+
+    @if (currentUser == null)
+    {
+        <div class="alert alert-warning">Требуется вход в систему.</div>
+        return;
+    }
+
+    @if (currentUser.Role < UserRole.Moderator)
+    {
+        <div class="alert alert-danger">Только модератор или администратор может открывать конкурс и принимать темы.</div>
+        return;
+    }
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <label class="form-label"><strong>Конкурс</strong></label>
+            <select value="@selectedContestId" class="form-select" @onchange="OnContestChangedAsync">
+                <option value="">-- выберите конкурс --</option>
+                @foreach (var contest in contests)
+                {
+                    <option value="@contest.Id">@contest</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(selectedContestId) && selectedContest != null)
+    {
+        <div class="card mb-3">
+            <div class="card-header">Настройки конкурса</div>
+            <div class="card-body">
+                <label class="form-label">Ограничение максимального количества тем</label>
+                <input type="number" min="0" class="form-control" @bind="maxTopicsCount" />
+                <div class="form-text">0 = без ограничения. После достижения лимита новые темы не принимаются.</div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">Объявление о приёме тем</div>
+            <div class="card-body">
+                <textarea class="form-control" rows="5" @bind="announcementText"
+                          placeholder="Добавьте текст объявления о начале приёма тем"></textarea>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="card h-100 border-warning">
+                    <div class="card-header bg-warning-subtle">Темы победителей прошлого конкурса (принимаются в первую очередь)</div>
+                    <div class="card-body">
+                        <textarea class="form-control mb-2" rows="8" @bind="winnerTopicsText"
+                                  placeholder="По одной теме на строку"></textarea>
+                        <button class="btn btn-outline-warning btn-sm" @onclick="LoadWinnerSuggestionsAsync">Подтянуть из прошлого конкурса</button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header">Обычные подачи тем</div>
+                    <div class="card-body">
+                        <textarea class="form-control" rows="8" @bind="regularTopicsText"
+                                  placeholder="По одной теме на строку"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-primary" @onclick="SaveOpeningAsync">Сохранить открытие конкурса</button>
+            <button class="btn btn-outline-secondary" @onclick="ReloadTopicsAsync">Обновить список тем</button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(message))
+        {
+            <div class="alert @(isSuccess ? "alert-success" : "alert-danger") mt-3">@message</div>
+        }
+
+        <div class="card mt-3">
+            <div class="card-header">Темы конкурса (@topics.Count)</div>
+            <div class="card-body">
+                @if (topics.Count == 0)
+                {
+                    <div class="text-muted">Пока нет ни одной темы.</div>
+                }
+                else
+                {
+                    <ul class="list-group">
+                        @foreach (var topic in topics.OrderBy(t => t.Number))
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span><strong>@topic.Number.</strong> @topic.Title</span>
+                                @if (topic.IsWinnerTopic)
+                                {
+                                    <span class="badge text-bg-warning">из тем победителей</span>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private User? currentUser;
+    private List<Contest> contests = new();
+    private Contest? selectedContest;
+    private string selectedContestId = string.Empty;
+
+    private int maxTopicsCount;
+    private string announcementText = string.Empty;
+    private string winnerTopicsText = string.Empty;
+    private string regularTopicsText = string.Empty;
+
+    private List<ContestTopic> topics = new();
+    private string message = string.Empty;
+    private bool isSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        contests = (await ContestService.GetContestsAsync()).ToList();
+    }
+
+    private async Task OnContestChangedAsync(ChangeEventArgs e)
+    {
+        selectedContestId = e.Value?.ToString() ?? string.Empty;
+        await LoadContestContextAsync();
+    }
+
+    private async Task LoadContestContextAsync()
+    {
+        if (string.IsNullOrWhiteSpace(selectedContestId))
+        {
+            selectedContest = null;
+            topics.Clear();
+            return;
+        }
+
+        selectedContest = await ContestService.GetContestAsync(selectedContestId);
+        maxTopicsCount = selectedContest?.MaxTopicsCount ?? 0;
+        announcementText = BuildAnnouncement(selectedContest);
+        await ReloadTopicsAsync();
+    }
+
+    private async Task ReloadTopicsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(selectedContestId))
+            return;
+
+        topics = await ContestService.GetContestTopicsAsync(selectedContestId);
+        StateHasChanged();
+    }
+
+    private async Task LoadWinnerSuggestionsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(selectedContestId))
+            return;
+
+        var suggestions = await ContestService.GetPreviousContestWinnerTopicSuggestionsAsync(selectedContestId);
+        if (suggestions.Count == 0)
+        {
+            message = "Не удалось найти темы прошлого конкурса для подсказки.";
+            isSuccess = false;
+            return;
+        }
+
+        winnerTopicsText = string.Join(Environment.NewLine, suggestions);
+        message = $"Подтянуто {suggestions.Count} тем из прошлого конкурса.";
+        isSuccess = true;
+    }
+
+    private async Task SaveOpeningAsync()
+    {
+        if (string.IsNullOrWhiteSpace(selectedContestId) || selectedContest == null)
+            return;
+
+        var winnerTopics = ParseLines(winnerTopicsText);
+        var regularTopics = ParseLines(regularTopicsText);
+
+        await ContestService.SaveMaxTopicsCountAsync(selectedContestId, maxTopicsCount);
+
+        var proposedBy = string.IsNullOrWhiteSpace(currentUser?.DisplayName)
+            ? currentUser?.Username ?? "system"
+            : currentUser!.DisplayName;
+
+        var (addedWinner, addedRegular, skipped) = await ContestService.AddTopicsWithPriorityAsync(
+            selectedContestId,
+            winnerTopics,
+            regularTopics,
+            proposedBy);
+
+        await ReloadTopicsAsync();
+
+        message = $"Сохранено. Объявление подготовлено. Добавлено тем победителей: {addedWinner}, обычных тем: {addedRegular}, пропущено: {skipped}.";
+        isSuccess = true;
+    }
+
+    private static List<string> ParseLines(string text)
+    {
+        return text
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string BuildAnnouncement(Contest? contest)
+    {
+        if (contest == null)
+            return string.Empty;
+
+        var header = string.IsNullOrWhiteSpace(contest.Number)
+            ? $"Открыт приём тем в конкурсе «{contest.Name}»."
+            : $"Открыт приём тем в конкурсе №{contest.Number} «{contest.Name}».";
+
+        return header + Environment.NewLine +
+               "В первую очередь принимаются темы победителей прошлого конкурса." + Environment.NewLine +
+               "Подавайте темы по одной строке.";
+    }
+}
