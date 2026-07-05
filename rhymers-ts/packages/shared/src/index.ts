@@ -125,6 +125,9 @@ export interface WorkReview {
   helpfulCount: number;
   isApproved: boolean;
   isHidden: boolean;
+  isDeleted: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
   createdAt: string;
 }
 

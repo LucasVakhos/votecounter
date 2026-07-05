@@ -75,6 +75,9 @@ export type ReviewRow = {
   helpful_count: number;
   is_approved: 0 | 1;
   is_hidden: 0 | 1;
+  is_deleted: 0 | 1;
+  deleted_at: string | null;
+  deleted_by: string | null;
   created_at: string;
 };
 
@@ -137,6 +140,7 @@ export function mapComment(row: CommentRow): ContestComment {
 }
 
 export function mapReview(row: ReviewRow): WorkReview {
+  const isDeleted = row.is_deleted === 1;
   return {
     id: row.id,
     contestId: row.contest_id,
@@ -144,15 +148,18 @@ export function mapReview(row: ReviewRow): WorkReview {
     workTitle: row.work_title,
     reviewerName: row.reviewer_name,
     reviewerRole: row.reviewer_role,
-    title: row.title,
-    content: row.content,
+    title: isDeleted ? "[Deleted by moderation]" : row.title,
+    content: isDeleted ? "[Deleted by moderation]" : row.content,
     rating: row.rating ?? undefined,
-    strengths: row.strengths ?? undefined,
-    areasForImprovement: row.areas_for_improvement ?? undefined,
-    authorResponse: row.author_response ?? undefined,
+    strengths: isDeleted ? undefined : (row.strengths ?? undefined),
+    areasForImprovement: isDeleted ? undefined : (row.areas_for_improvement ?? undefined),
+    authorResponse: isDeleted ? undefined : (row.author_response ?? undefined),
     helpfulCount: row.helpful_count,
     isApproved: row.is_approved === 1,
     isHidden: row.is_hidden === 1,
+    isDeleted,
+    deletedAt: row.deleted_at ?? undefined,
+    deletedBy: row.deleted_by ?? undefined,
     createdAt: row.created_at
   };
 }

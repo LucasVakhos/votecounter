@@ -89,7 +89,7 @@ export function getReviews(contestId: string, workNumber: number) {
   return (
     db
       .prepare(
-        "SELECT id, contest_id, work_number, work_title, reviewer_name, reviewer_role, title, content, rating, strengths, areas_for_improvement, author_response, helpful_count, is_approved, is_hidden, created_at FROM work_reviews WHERE contest_id = ? AND work_number = ? ORDER BY created_at DESC"
+        "SELECT id, contest_id, work_number, work_title, reviewer_name, reviewer_role, title, content, rating, strengths, areas_for_improvement, author_response, helpful_count, is_approved, is_hidden, is_deleted, deleted_at, deleted_by, created_at FROM work_reviews WHERE contest_id = ? AND work_number = ? ORDER BY created_at DESC"
       )
       .all(contestId, workNumber) as ReviewRow[]
   ).map(mapReview);
@@ -112,11 +112,14 @@ export function addReview(contestId: string, workNumber: number, user: User, bod
     helpfulCount: 0,
     isApproved: true,
     isHidden: false,
+    isDeleted: false,
+    deletedAt: undefined,
+    deletedBy: undefined,
     createdAt: new Date().toISOString()
   };
 
   db.prepare(
-    "INSERT INTO work_reviews(id, contest_id, work_number, work_title, reviewer_name, reviewer_role, title, content, rating, strengths, areas_for_improvement, author_response, helpful_count, is_approved, is_hidden, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO work_reviews(id, contest_id, work_number, work_title, reviewer_name, reviewer_role, title, content, rating, strengths, areas_for_improvement, author_response, helpful_count, is_approved, is_hidden, is_deleted, deleted_at, deleted_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).run(
     review.id,
     review.contestId,
@@ -133,6 +136,9 @@ export function addReview(contestId: string, workNumber: number, user: User, bod
     0,
     1,
     0,
+    0,
+    null,
+    null,
     review.createdAt
   );
 
@@ -143,7 +149,7 @@ export function getReviewStats(contestId: string, workNumber: number): ReviewSta
   const reviews = (
     db
       .prepare(
-        "SELECT id, contest_id, work_number, work_title, reviewer_name, reviewer_role, title, content, rating, strengths, areas_for_improvement, author_response, helpful_count, is_approved, is_hidden, created_at FROM work_reviews WHERE contest_id = ? AND work_number = ?"
+        "SELECT id, contest_id, work_number, work_title, reviewer_name, reviewer_role, title, content, rating, strengths, areas_for_improvement, author_response, helpful_count, is_approved, is_hidden, is_deleted, deleted_at, deleted_by, created_at FROM work_reviews WHERE contest_id = ? AND work_number = ?"
       )
       .all(contestId, workNumber) as ReviewRow[]
   ).map(mapReview);
@@ -169,6 +175,30 @@ export function approveReview(reviewId: string): boolean {
 export function hideReview(reviewId: string): boolean {
   const result = db.prepare("UPDATE work_reviews SET is_hidden = 1 WHERE id = ?").run(reviewId);
   return result.changes > 0;
+}
+
+export type SoftDeleteReviewResult = "ok" | "not_found" | "forbidden_target";
+
+export function softDeleteMortalReview(reviewId: string, moderatorName: string): SoftDeleteReviewResult {
+  const target = db
+    .prepare("SELECT reviewer_role FROM work_reviews WHERE id = ?")
+    .get(reviewId) as { reviewer_role: User["role"] } | undefined;
+
+  if (!target) {
+    return "not_found";
+  }
+
+  if (target.reviewer_role === "moderator" || target.reviewer_role === "admin") {
+    return "forbidden_target";
+  }
+
+  const result = db
+    .prepare(
+      "UPDATE work_reviews SET is_deleted = 1, is_hidden = 1, is_approved = 0, deleted_at = ?, deleted_by = ? WHERE id = ? AND is_deleted = 0"
+    )
+    .run(new Date().toISOString(), moderatorName, reviewId);
+
+  return result.changes > 0 ? "ok" : "not_found";
 }
 
 export function setAuthorResponse(reviewId: string, responseText: string): boolean {

@@ -14,6 +14,7 @@ import {
   likeComment,
   markReviewHelpful,
   softDeleteMortalComment,
+  softDeleteMortalReview,
   setAuthorResponse
 } from "../repositories/discussions-repository.js";
 
@@ -171,6 +172,31 @@ discussionsRouter.post("/reviews/:reviewId/hide", (req, res) => {
     res.json({ ok: true });
     return;
   }
+  res.status(404).json({ error: "Review not found" });
+});
+
+discussionsRouter.post("/reviews/:reviewId/delete", (req, res) => {
+  const user = getCurrentUser(req);
+  if (!requireRole(user, "moderator")) {
+    res.status(403).json({ error: "Moderator role required" });
+    return;
+  }
+
+  if (!user) {
+    res.status(403).json({ error: "Moderator role required" });
+    return;
+  }
+
+  const result = softDeleteMortalReview(req.params.reviewId, user.displayName);
+  if (result === "ok") {
+    res.json({ ok: true });
+    return;
+  }
+  if (result === "forbidden_target") {
+    res.status(403).json({ error: "Cannot delete moderator/admin reviews" });
+    return;
+  }
+
   res.status(404).json({ error: "Review not found" });
 });
 

@@ -31,21 +31,24 @@ test("migration versions are continuous", () => {
 });
 
 test("migration down/up smoke test", () => {
-  assert.equal(getCurrentSchemaVersion(db), 3);
+  assert.equal(getCurrentSchemaVersion(db), 4);
 
   const reverted = migrateDown(db, 1);
   assert.equal(reverted, 1);
-  assert.equal(getCurrentSchemaVersion(db), 2);
+  assert.equal(getCurrentSchemaVersion(db), 3);
 
   const applied = runMigrations(db);
   assert.equal(applied, 1);
-  assert.equal(getCurrentSchemaVersion(db), 3);
+  assert.equal(getCurrentSchemaVersion(db), 4);
 
   const voteIndexes = db.prepare("PRAGMA index_list('votes')").all() as Array<{ name: string }>;
   assert.ok(voteIndexes.some((x) => x.name === "idx_votes_contest_id"));
 
   const commentIndexes = db.prepare("PRAGMA index_list('contest_comments')").all() as Array<{ name: string }>;
   assert.ok(commentIndexes.some((x) => x.name === "idx_contest_comments_is_deleted"));
+
+  const reviewIndexes = db.prepare("PRAGMA index_list('work_reviews')").all() as Array<{ name: string }>;
+  assert.ok(reviewIndexes.some((x) => x.name === "idx_work_reviews_is_deleted"));
 });
 
 test("health endpoint exposes sqlite storage", async () => {
@@ -55,7 +58,7 @@ test("health endpoint exposes sqlite storage", async () => {
   assert.equal(res.status, 200);
   assert.equal(res.body.ok, true);
   assert.equal(res.body.storage, "sqlite");
-  assert.equal(res.body.schemaVersion, 3);
+  assert.equal(res.body.schemaVersion, 4);
 });
 
 test("contest create + list + works flow", async () => {
@@ -147,4 +150,53 @@ test("moderator cannot soft-delete moderator comment", async () => {
 
   assert.equal(softDelete.status, 403);
   assert.equal(softDelete.body.error, "Cannot delete moderator/admin comments");
+});
+
+test("review moderation soft-delete flow", async () => {
+  const app = createApp();
+
+  const created = await request(app)
+    .post("/api/discussions/contests/c1/works/1/reviews")
+    .set("X-User-Name", "Poet")
+    .set("X-User-Role", "author")
+    .send({ title: "Strong piece", content: "Great rhythm", rating: 9 });
+
+  assert.equal(created.status, 201);
+  const reviewId = created.body.id as string;
+
+  const softDelete = await request(app)
+    .post(`/api/discussions/reviews/${reviewId}/delete`)
+    .set("X-User-Name", "ModUser")
+    .set("X-User-Role", "moderator");
+
+  assert.equal(softDelete.status, 200);
+
+  const reviews = await request(app).get("/api/discussions/contests/c1/works/1/reviews");
+  assert.equal(reviews.status, 200);
+  assert.equal(reviews.body.length, 1);
+  assert.equal(reviews.body[0].isDeleted, true);
+  assert.equal(reviews.body[0].deletedBy, "ModUser");
+  assert.equal(reviews.body[0].title, "[Deleted by moderation]");
+  assert.equal(reviews.body[0].content, "[Deleted by moderation]");
+});
+
+test("moderator cannot soft-delete moderator review", async () => {
+  const app = createApp();
+
+  const created = await request(app)
+    .post("/api/discussions/contests/c1/works/1/reviews")
+    .set("X-User-Name", "AnotherMod")
+    .set("X-User-Role", "moderator")
+    .send({ title: "Mod opinion", content: "Please adjust", rating: 7 });
+
+  assert.equal(created.status, 201);
+  const reviewId = created.body.id as string;
+
+  const softDelete = await request(app)
+    .post(`/api/discussions/reviews/${reviewId}/delete`)
+    .set("X-User-Name", "MainMod")
+    .set("X-User-Role", "moderator");
+
+  assert.equal(softDelete.status, 403);
+  assert.equal(softDelete.body.error, "Cannot delete moderator/admin reviews");
 });
