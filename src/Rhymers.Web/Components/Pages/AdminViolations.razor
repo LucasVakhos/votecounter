@@ -1,0 +1,449 @@
+@page "/admin/violations"
+@using Rhymers.Web.Services
+@using Rhymers.Core.Models
+@inject SorrowChatWebService SorrowService
+@inject AuthorizationWebService AuthService
+@inject NavigationManager NavigationManager
+
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1>⚖️ Панель управления нарушениями</h1>
+            <p class="text-muted">Управление всеми нарушениями в системе, применение санкций</p>
+        </div>
+    </div>
+
+    @if (currentUser?.Role < UserRole.Admin)
+    {
+        <div class="alert alert-danger" role="alert">
+            <strong>❌ Доступ запрещен</strong><br>
+            Эта страница доступна только администраторам.
+        </div>
+        return;
+    }
+
+    <!-- Фильтры -->
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <h6 class="mb-0">🔍 Фильтры</h6>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Тип нарушения</label>
+                    <select class="form-select" @onchange="e => { filterViolationType = (ViolationType?)int.Parse(e.Value?.ToString() ?? string.Empty); ApplyFilters(); }">
+                        <option value="-1">Все типы</option>
+                        <option value="0">🤬 Грубость</option>
+                        <option value="1">🎣 Троллинг</option>
+                        <option value="2">📢 Спам</option>
+                        <option value="3">⚠️ Прочее</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Статус</label>
+                    <select class="form-select" @onchange="e => { filterStatus = e.Value?.ToString(); ApplyFilters(); }">
+                        <option value="">Все</option>
+                        <option value="active">Активные</option>
+                        <option value="cleared">Снято</option>
+                        <option value="sanctioned">Санкционированные</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Пользователь</label>
+                    <input type="text" class="form-control" placeholder="Имя пользователя..." @bind="filterUserName" @bind:event="oninput" @onchange="ApplyFilters" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <button class="btn btn-outline-secondary w-100" @onclick="ResetFilters">
+                        🔄 Сбросить
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Статистика -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">📊 Всего нарушений</h5>
+                    <h2 class="text-primary">@allViolations.Count</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">⚠️ Активных</h5>
+                    <h2 class="text-warning">@allViolations.Count(v => !v.IsCleared)</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">✓ Снято</h5>
+                    <h2 class="text-success">@allViolations.Count(v => v.IsCleared)</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">⛔ Санкционировано</h5>
+                    <h2 class="text-danger">@allViolations.Count(v => v.Sanction != SanctionType.None)</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Таблица нарушений -->
+    <div class="card">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">📋 Нарушения (@filteredViolations.Count)</h6>
+            <small class="text-muted">Обновлено: @DateTime.Now.ToString("HH:mm:ss")</small>
+        </div>
+        <div class="card-body p-0">
+            @if (!filteredViolations.Any())
+            {
+                <div class="p-4 text-center text-muted">
+                    <p>📭 Нарушений не найдено по выбранным фильтрам</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Дата</th>
+                                <th>Пользователь</th>
+                                <th>Тип</th>
+                                <th>Детали</th>
+                                <th>Статус</th>
+                                <th>Санкция</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var violation in filteredViolations)
+                            {
+                                <tr>
+                                    <td>
+                                        <small>@violation.CreatedAt.ToString("dd.MM.yyyy HH:mm")</small>
+                                    </td>
+                                    <td>
+                                        <strong>@violation.UserName</strong>
+                                    </td>
+                                    <td>
+                                        <span class="badge @GetViolationTypeBadgeClass(violation.Type)">
+                                            @GetViolationTypeDisplay(violation.Type)
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <small style="max-width: 300px; display: inline-block;">
+                                            @if (!string.IsNullOrEmpty(violation.Details))
+                                            {
+                                                <span title="@violation.Details">@violation.Details.Substring(0, Math.Min(30, violation.Details.Length))...</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
+                                        </small>
+                                    </td>
+                                    <td>
+                                        @if (violation.IsCleared)
+                                        {
+                                            <span class="badge bg-success">✓ Снято</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-warning">⚠️ Активно</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (violation.Sanction != SanctionType.None)
+                                        {
+                                            <span class="badge bg-danger">@GetSanctionDisplay(violation.Sanction)</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button class="btn btn-outline-info" @onclick="() => ToggleDetails(violation.Id)" title="Показать детали">
+                                                👁️
+                                            </button>
+                                            @if (!violation.IsCleared)
+                                            {
+                                                <button class="btn btn-outline-success" @onclick="() => ClearViolation(violation.Id)" title="Снять нарушение">
+                                                    ✓
+                                                </button>
+                                            }
+                                            @if (violation.Sanction == SanctionType.None && !violation.IsCleared)
+                                            {
+                                                <button class="btn btn-outline-danger" @onclick="() => ToggleSanctionForm(violation.Id)" title="Применить санкцию">
+                                                    ⚖️
+                                                </button>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                <!-- Детали нарушения -->
+                                @if (expandedViolationId == violation.Id)
+                                {
+                                    <tr>
+                                        <td colspan="7">
+                                            <div class="p-3 bg-light">
+                                                <div class="row">
+                                                    <div class="col-md-6">
+                                                        <p><strong>ID сообщения:</strong> @violation.MessageId</p>
+                                                        <p><strong>Модератор:</strong> 🎭 Инкогнито</p>
+                                                        <p><strong>Причина:</strong> @(string.IsNullOrEmpty(violation.Details) ? "Не указана" : violation.Details)</p>
+                                                        @if (violation.IsCleared)
+                                                        {
+                                                            <p><strong>Снято:</strong> 🎭 Администратор (@violation.ClearedAt?.ToString("dd.MM.yyyy HH:mm"))</p>
+                                                        }
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        @if (violation.Sanction != SanctionType.None)
+                                                        {
+                                                            <p><strong>Санкция:</strong> @GetSanctionDisplay(violation.Sanction)</p>
+                                                            <p><strong>Администратор:</strong> 🎭 Инкогнито</p>
+                                                            <p><strong>Причина санкции:</strong> @(string.IsNullOrEmpty(violation.SanctionReason) ? "Не указана" : violation.SanctionReason)</p>
+                                                            @if (violation.SanctionExpiredAt.HasValue)
+                                                            {
+                                                                <p><strong>Истекает:</strong> @violation.SanctionExpiredAt?.ToString("dd.MM.yyyy HH:mm")</p>
+                                                            }
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+
+                                <!-- Форма применения санкции -->
+                                @if (expandedSanctionFormId == violation.Id && violation.Sanction == SanctionType.None)
+                                {
+                                    <tr>
+                                        <td colspan="7">
+                                            <div class="p-3 bg-warning bg-opacity-10">
+                                                <div class="row">
+                                                    <div class="col-md-3">
+                                                        <label class="form-label">Тип санкции</label>
+                                                        <select class="form-select form-select-sm" @onchange="e => selectedSanctionType = (SanctionType)int.Parse(e.Value?.ToString() ?? string.Empty)">
+                                                            <option value="1">⏰ На 1 день</option>
+                                                            <option value="2">📅 На 7 дней</option>
+                                                            <option value="3">🗓️ На 30 дней</option>
+                                                            <option value="4">♾️ Постоянно</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label">Причина</label>
+                                                        <input type="text" class="form-control form-control-sm" placeholder="Причина санкции..." @bind="sanctionReason" />
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label">&nbsp;</label>
+                                                        <div class="d-flex gap-2">
+                                                            <button class="btn btn-sm btn-danger w-100" @onclick="() => ApplySanction(violation.Id)">
+                                                                💾 Применить
+                                                            </button>
+                                                            <button class="btn btn-sm btn-secondary" @onclick="() => ToggleSanctionForm(null)">
+                                                                ✕
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Сообщение об ошибке/успехе -->
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert alert-@(isSuccess ? "success" : "danger") mt-3 alert-dismissible fade show" role="alert">
+            @message
+            <button type="button" class="btn-close" @onclick="() => message = string.Empty" aria-label="Закрыть"></button>
+        </div>
+    }
+</div>
+
+@code {
+    private User? currentUser;
+    private List<UserViolation> allViolations = new();
+    private List<UserViolation> filteredViolations = new();
+    
+    // Фильтры
+    private ViolationType? filterViolationType = null;
+    private string? filterStatus = "";
+    private string? filterUserName = "";
+    
+    // UI состояние
+    private string? expandedViolationId = null;
+    private string? expandedSanctionFormId = null;
+    private SanctionType selectedSanctionType = SanctionType.OneDay;
+    private string? sanctionReason = "";
+    
+    private string? message = "";
+    private bool isSuccess = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        if (currentUser?.Role < UserRole.Admin)
+            return;
+
+        await LoadViolations();
+    }
+
+    private async Task LoadViolations()
+    {
+        try
+        {
+            var contestId = "contest-1";
+            allViolations = await SorrowService.GetContestViolationsAsync(contestId, onlyActive: false);
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка загрузки: {ex.Message}";
+            isSuccess = false;
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        filteredViolations = allViolations
+            .Where(v =>
+            {
+                // Фильтр по типу
+                if (filterViolationType.HasValue && v.Type != filterViolationType)
+                    return false;
+
+                // Фильтр по статусу
+                if (!string.IsNullOrEmpty(filterStatus))
+                {
+                    if (filterStatus == "active" && v.IsCleared)
+                        return false;
+                    if (filterStatus == "cleared" && !v.IsCleared)
+                        return false;
+                    if (filterStatus == "sanctioned" && v.Sanction == SanctionType.None)
+                        return false;
+                }
+
+                // Фильтр по пользователю
+                if (!string.IsNullOrEmpty(filterUserName) && !v.UserName.Contains(filterUserName, StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                return true;
+            })
+            .OrderByDescending(v => v.CreatedAt)
+            .ToList();
+    }
+
+    private void ResetFilters()
+    {
+        filterViolationType = null;
+        filterStatus = "";
+        filterUserName = "";
+        ApplyFilters();
+    }
+
+    private void ToggleDetails(string violationId)
+    {
+        expandedViolationId = expandedViolationId == violationId ? null : violationId;
+    }
+
+    private void ToggleSanctionForm(string? violationId)
+    {
+        expandedSanctionFormId = expandedSanctionFormId == violationId ? null : violationId;
+        selectedSanctionType = SanctionType.OneDay;
+        sanctionReason = "";
+    }
+
+    private async Task ClearViolation(string violationId)
+    {
+        try
+        {
+            await SorrowService.ClearViolationAsync(violationId, currentUser!.DisplayName);
+            message = "✅ Нарушение снято";
+            isSuccess = true;
+            await LoadViolations();
+            await Task.Delay(2000);
+            message = "";
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка: {ex.Message}";
+            isSuccess = false;
+        }
+    }
+
+    private async Task ApplySanction(string violationId)
+    {
+        try
+        {
+            await SorrowService.ApplySanctionAsync(violationId, selectedSanctionType, currentUser!.DisplayName, sanctionReason);
+            
+            // Отправляем объявление в чат
+            var violation = allViolations.FirstOrDefault(v => v.Id == violationId);
+            if (violation != null)
+            {
+                await SorrowService.PostSanctionAnnouncementAsync("contest-1", violation.UserName, selectedSanctionType, sanctionReason);
+            }
+
+            message = $"✅ Санкция применена: {GetSanctionDisplay(selectedSanctionType)}";
+            isSuccess = true;
+            expandedSanctionFormId = null;
+            await LoadViolations();
+            await Task.Delay(2000);
+            message = "";
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка: {ex.Message}";
+            isSuccess = false;
+        }
+    }
+
+    private string GetViolationTypeBadgeClass(ViolationType type) => type switch
+    {
+        ViolationType.Rudeness => "bg-danger",
+        ViolationType.Trolling => "bg-danger",
+        ViolationType.Spam => "bg-warning text-dark",
+        ViolationType.Other => "bg-secondary",
+        _ => "bg-secondary"
+    };
+
+    private string GetViolationTypeDisplay(ViolationType type) => type switch
+    {
+        ViolationType.Rudeness => "🤬 Грубость",
+        ViolationType.Trolling => "🎣 Троллинг",
+        ViolationType.Spam => "📢 Спам",
+        ViolationType.Other => "⚠️ Прочее",
+        _ => "Неизвестно"
+    };
+
+    private string GetSanctionDisplay(SanctionType type) => type switch
+    {
+        SanctionType.OneDay => "⏰ 1 день",
+        SanctionType.OneWeek => "📅 7 дней",
+        SanctionType.OneMonth => "🗓️ 30 дней",
+        SanctionType.Permanent => "♾️ Постоянно",
+        _ => "Нет"
+    };
+}
