@@ -1,5 +1,6 @@
 @page "/fair-voting-audit"
 @using Rhymers.Core.Models
+@using Rhymers.Core.Services
 @using Rhymers.Web.Services
 @inject ContestService ContestService
 @inject AuthorizationWebService AuthService
@@ -137,17 +138,14 @@
 </div>
 
 @code {
-    private const string FairVotingSystemUserId = "system:fair-voting";
-    private const string AdminAverageSystemUserId = "system:admin-average";
-
     private User? currentUser;
     private Contest? contest;
-    private List<AuditRow> rows = new();
+    private List<FairVotingAuditRow> rows = new();
     private bool showOnlySignificantDeviations;
     private decimal deviationThreshold = 0.5m;
     private bool isLoading = true;
 
-    private List<AuditRow> visibleRows => BuildVisibleRows();
+    private List<FairVotingAuditRow> visibleRows => BuildVisibleRows();
 
     protected override async Task OnInitializedAsync()
     {
@@ -168,21 +166,13 @@
         var submissions = await ContestService.GetApprovedWorkSubmissionsAsync(contest.Id);
         var votes = await ContestService.GetContestVotesAsync(contest.Id);
 
-        rows = BuildAuditRows(submissions, votes);
+        rows = FairVotingAuditCalculator.BuildRows(submissions, votes);
         isLoading = false;
     }
 
-    private List<AuditRow> BuildVisibleRows()
+    private List<FairVotingAuditRow> BuildVisibleRows()
     {
-        if (!showOnlySignificantDeviations)
-            return rows;
-
-        var threshold = deviationThreshold < 0 ? 0 : deviationThreshold;
-        return rows
-            .Where(r =>
-                (r.FairDelta.HasValue && Math.Abs(r.FairDelta.Value) >= threshold) ||
-                (r.AdminDelta.HasValue && Math.Abs(r.AdminDelta.Value) >= threshold))
-            .ToList();
+        return FairVotingAuditCalculator.FilterByDeviation(rows, deviationThreshold, showOnlySignificantDeviations);
     }
 
     private void SetThreshold(decimal value)
@@ -195,77 +185,6 @@
         return Math.Abs(deviationThreshold - preset) < 0.01m
             ? "btn btn-secondary"
             : "btn btn-outline-secondary";
-    }
-
-    private static List<AuditRow> BuildAuditRows(List<WorkSubmission> submissions, List<ContestVote> votes)
-    {
-        var result = new List<AuditRow>();
-
-        foreach (var item in submissions.Select((value, index) => new { value, index }))
-        {
-            var submission = item.value;
-            var submissionVotes = votes.Where(v => v.SubmissionId == submission.Id).ToList();
-
-            var humanVotes = submissionVotes
-                .Where(v =>
-                    !string.Equals(v.VoterUserId, FairVotingSystemUserId, StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(v.VoterUserId, AdminAverageSystemUserId, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            var humanCount = humanVotes.Count;
-            decimal? humanAverage = humanCount == 0 ? null : (decimal?)humanVotes.Average(v => v.Score);
-
-            var fairVote = submissionVotes
-                .Where(v => string.Equals(v.VoterUserId, FairVotingSystemUserId, StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(v => v.UpdatedAt)
-                .FirstOrDefault();
-
-            var adminVote = submissionVotes
-                .Where(v => string.Equals(v.VoterUserId, AdminAverageSystemUserId, StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(v => v.UpdatedAt)
-                .FirstOrDefault();
-
-            decimal? fairScore = fairVote?.Score;
-            decimal? adminScore = adminVote?.Score;
-            decimal? fairDelta = (humanAverage.HasValue && fairScore.HasValue)
-                ? fairScore.Value - humanAverage.Value
-                : null;
-            decimal? adminDelta = (humanAverage.HasValue && adminScore.HasValue)
-                ? adminScore.Value - humanAverage.Value
-                : null;
-
-            result.Add(new AuditRow
-            {
-                DisplayNo = submission.Work.Number > 0 ? submission.Work.Number : item.index + 1,
-                Topic = string.IsNullOrWhiteSpace(submission.Work.Topic) ? "Без темы" : submission.Work.Topic,
-                Author = submission.Work.Author,
-                HumanVotesCount = humanCount,
-                HumanAverage = humanAverage,
-                FairSystemScore = fairScore,
-                AdminSystemScore = adminScore,
-                FairDelta = fairDelta,
-                AdminDelta = adminDelta,
-                FairSystemUpdatedAt = fairVote?.UpdatedAt,
-                AdminSystemUpdatedAt = adminVote?.UpdatedAt,
-                RuleLabel = BuildRuleLabel(fairVote != null, adminVote != null)
-            });
-        }
-
-        return result
-            .OrderBy(r => r.DisplayNo)
-            .ToList();
-    }
-
-    private static string BuildRuleLabel(bool hasFairVote, bool hasAdminVote)
-    {
-        if (hasFairVote && hasAdminVote)
-            return "Честный бот + админ-авто по среднему";
-        if (hasFairVote)
-            return "Честный бот по среднему голосов";
-        if (hasAdminVote)
-            return "Админ-авто по среднему при закрытии";
-
-        return "Только человеческие оценки";
     }
 
     private string GetAuthorDisplay(string author)
@@ -290,19 +209,4 @@
         return "text-muted";
     }
 
-    private sealed class AuditRow
-    {
-        public int DisplayNo { get; set; }
-        public string Topic { get; set; } = string.Empty;
-        public string Author { get; set; } = string.Empty;
-        public int HumanVotesCount { get; set; }
-        public decimal? HumanAverage { get; set; }
-        public decimal? FairSystemScore { get; set; }
-        public decimal? AdminSystemScore { get; set; }
-        public decimal? FairDelta { get; set; }
-        public decimal? AdminDelta { get; set; }
-        public DateTime? FairSystemUpdatedAt { get; set; }
-        public DateTime? AdminSystemUpdatedAt { get; set; }
-        public string RuleLabel { get; set; } = string.Empty;
-    }
 }
