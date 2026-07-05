@@ -1,7 +1,7 @@
-# Changelog v2.0 — Summer 2026 Release
+# Changelog v2.0+ — Summer 2026 Release & Beyond
 
 ## 🎯 Overview
-Six-phase development cycle completing critical feature additions: fair voting audit enhancements, fraud detection with auto-sanctions, rollback race-condition protection, winners celebration with hall of fame, and user achievement showcase.
+Eight-phase development cycle: fair voting audit enhancements, fraud detection with auto-sanctions, rollback race-condition protection, winners celebration with hall of fame, user achievement showcase, community discussions & reviews, and OAuth social login integration (Одноклассники).
 
 ---
 
@@ -285,6 +285,72 @@ This is a breaking architectural change planned for future implementation:
 
 ---
 
+## Phase 9: OAuth Social Login - Одноклассники ✅
+**Commit: 7ed5d3d** — *OAuth 2.0 integration with Одноклассники (OK)*
+
+### New Features
+- **Одноклассники OAuth 2.0** — One-click login/registration via Одноклассники
+- **Automatic User Creation** — New users auto-registered with Reader role
+- **Profile Sync** — Name, email, photo synchronized from OK
+- **Session Management** — ASP.NET Core sessions with 30-min timeout
+- **State Validation** — CSRF protection with state parameter
+
+### Technical Details
+- `OdnoklassnikiOAuthService` — OAuth API integration
+- `OAuthController` — OAuth callback and flow handling
+- MD5 signature generation for API calls (OK requirement)
+- Session middleware integration
+- Environment-based configuration
+
+### New Components
+- `Login.razor` — Updated with "Войти через Одноклассники" button
+- OAuth configuration in `appsettings.json`
+- `/auth/oauth/odnoklassniki/login` — Initiate OAuth flow
+- `/auth/oauth/odnoklassniki/callback` — OAuth callback handler
+
+### Workflow
+1. User clicks "Войти через Одноклассники" button
+2. Redirect to Одноклассники authorization page
+3. User authorizes app in OK
+4. Redirect back to app with authorization code
+5. Exchange code for access token
+6. Fetch user info (UID, name, email, photo)
+7. Find/create user in system
+8. Set session and redirect to profile
+
+### User Impact
+- 🚀 Faster onboarding (one-click signup)
+- 🔐 No password to remember for social login
+- 👤 Auto-populated profile from OK
+- 📱 Native mobile experience (if OK app installed)
+
+### Configuration
+Users must register an app at https://dev.odnoklassniki.ru/:
+```json
+{
+  "OAuth": {
+    "Odnoklassniki": {
+      "ClientId": "YOUR_APP_ID",
+      "ClientSecret": "YOUR_APP_SECRET"
+    }
+  }
+}
+```
+
+### Security Considerations
+- HTTPS required in production
+- State parameter prevents CSRF
+- Tokens not stored (used only for fetching user info)
+- OAuth users can still use traditional login if enabled
+- New OAuth users default to Reader role (safe default)
+
+### Test Coverage
+- ✅ All 35 unit tests continue passing
+- ✅ Build verification successful
+- ✅ No breaking changes to existing auth system
+
+---
+
 ## 📝 User-Facing Improvements
 
 ### For Authors
@@ -342,16 +408,15 @@ This is a breaking architectural change planned for future implementation:
 |---|--------|---------|
 | 1 | 38c3ae7 | Fair voting audit closure |
 | 2 | bf5c38c | Extract calculator + unit tests |
-| 3 | 34+ tests | FairVotingAuditCalculator coverage |
-| 4 | 19c4ab0 | Antifraid & sanctions system |
-| 5 | 7240e24 | Race-condition protection |
-| 6 | 37dafae | Hall of Fame system + UI |
-| 7 | 4cd41b5 | Prize Shelf + image export |
-| 8 | 1f634de | Release documentation (v2.0) |
-| 9 | 4a954ed | Discussions & Reviews system (Phase 8) |
-| 7 | 4cd41b5 | User prize shelf + export |
+| 3 | 19c4ab0 | Antifraid & sanctions system |
+| 4 | 7240e24 | Race-condition protection |
+| 5 | 37dafae | Hall of Fame system + UI |
+| 6 | 4cd41b5 | Prize Shelf + image export |
+| 7 | 1f634de | Release documentation (v2.0) |
+| 8 | 6255d1e | Discussions & Reviews system (Phase 8) |
+| 9 | 7ed5d3d | OAuth Одноклассники integration (Phase 9) |
 
-**Total: 7 commits, 35 passing tests, 0 build errors**
+**Total: 9 commits, 35 passing tests, 0 build errors**
 
 ---
 
@@ -361,14 +426,22 @@ This is a breaking architectural change planned for future implementation:
 - See [ARCHITECTURE.md](../ARCHITECTURE.md) for system design
 - See [DEPENDENCY_INJECTION.md](../DEPENDENCY_INJECTION.md) for service registration
 - See [CODE_OPTIMIZATION.md](../CODE_OPTIMIZATION.md) for performance tuning
+- See [OAUTH_ODNOKLASSNIKI.md](../OAUTH_ODNOKLASSNIKI.md) for OAuth integration
+- See [DISCUSSIONS_SYSTEM.md](../DISCUSSIONS_SYSTEM.md) for discussions/reviews
 
 ### For Users
-- Prize Shelf: `/profile` → "Экспортировать" button
-- Hall of Fame: `/hall-of-fame` (public, no login required)
-- Audit: `/fair-voting-audit` (moderators+)
+- **Authentication:**
+  - Traditional login: `/auth/login` with username/password
+  - OAuth login: Click "Войти через Одноклассники" button
+- **Features:**
+  - Prize Shelf: `/profile` → "Экспортировать" button
+  - Hall of Fame: `/hall-of-fame` (public, no login required)
+  - Audit: `/fair-voting-audit` (moderators+)
+  - Discussion: `/contest/{id}/discussion` (everyone)
+  - Reviews: `/contest/{id}/work/{#}/reviews` (everyone)
 
 ---
 
 **Release Date:** July 5, 2026  
-**Version:** 2.0 (Summer Release)  
+**Version:** 2.0+ (Summer Release + Enhancements)  
 **Status:** ✅ Ready for Production
