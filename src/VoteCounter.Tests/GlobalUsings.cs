@@ -1,0 +1,10 @@
+global using System;
+global using System.Collections.Generic;
+global using System.Linq;
+global using System.Threading.Tasks;
+global using Xunit;
+global using Moq;
+global using FluentAssertions;
+global using VoteCounter.Core.Models;
+global using VoteCounter.Core.Services;
+global using VoteCounter.Data.Database;

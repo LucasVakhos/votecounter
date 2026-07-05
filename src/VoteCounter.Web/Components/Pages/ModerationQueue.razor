@@ -1,0 +1,211 @@
+@page "/moderation-queue"
+@using VoteCounter.Web.Services
+@inject ModerationWebService ModerationService
+
+<div class="container mt-4">
+    <h1>🔍 Очередь на модерацию</h1>
+    
+    <div class="alert alert-warning" role="alert">
+        <strong>⚠️ Модератор:</strong> Здесь вы видите работы, отправленные на проверку.
+    </div>
+
+    <div class="mb-3">
+        <select @bind="selectedContestId" @bind:event="oninput" class="form-select" @onchange="OnContestSelectedAsync">
+            <option value="">-- Выберите конкурс --</option>
+            <option value="contest-1">Конкурс 1</option>
+            <option value="contest-2">Конкурс 2</option>
+        </select>
+    </div>
+
+    @if (string.IsNullOrEmpty(selectedContestId))
+    {
+        <div class="alert alert-info">Выберите конкурс для просмотра очереди</div>
+    }
+    else if (isLoading)
+    {
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Загрузка...</span>
+        </div>
+    }
+    else if (submissions == null || submissions.Count == 0)
+    {
+        <div class="alert alert-success">✅ Нет работ на модерации!</div>
+    }
+    else
+    {
+        <div class="row">
+            @foreach (var submission in submissions)
+            {
+                <div class="col-md-6 mb-4">
+                    <div class="card border-warning h-100">
+                        <div class="card-header bg-warning text-dark">
+                            <strong>@submission.Work.Title</strong>
+                            <span class="badge float-end bg-secondary">@submission.Work.Author</span>
+                        </div>
+                        
+                        <div class="card-body">
+                            <p class="card-text">
+                                <strong>Тема:</strong> @submission.Work.Topic<br />
+                                <strong>Подана:</strong> @submission.SubmittedAt.ToString("dd.MM.yyyy HH:mm")<br />
+                                <strong>Статус:</strong> 
+                                <span class="badge bg-warning">@GetStatusBadge(submission.Status)</span>
+                            </p>
+                            
+                            <div class="work-content bg-light p-3 rounded mb-3" style="max-height: 200px; overflow-y: auto;">
+                                <small>@submission.Work.Content</small>
+                            </div>
+
+                            @if (submission.Status == WorkStatus.PendingModeration || submission.Status == WorkStatus.UnderReview)
+                            {
+                                <div class="mb-2">
+                                    <textarea @bind="rejectionNotes[submission.Id]" 
+                                             class="form-control form-control-sm" rows="2" 
+                                             placeholder="Примечание (обязательно для отклонения)"></textarea>
+                                </div>
+
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-success" 
+                                           @onclick="() => ApproveAsync(submission.Id)">
+                                        ✓ Одобрить
+                                    </button>
+                                    <button type="button" class="btn btn-danger" 
+                                           @onclick="() => RejectAsync(submission.Id)">
+                                        ✗ Отклонить
+                                    </button>
+                                </div>
+                            }
+                            else if (submission.Status == WorkStatus.Approved)
+                            {
+                                <div class="alert alert-success mb-0" role="alert">
+                                    ✅ Одобрена @submission.ModeratedAt?.ToString("dd.MM.yyyy HH:mm") 
+                                    <br />Модератор: @submission.ModeratorName
+                                </div>
+                            }
+                            else if (submission.Status == WorkStatus.Rejected)
+                            {
+                                <div class="alert alert-danger mb-0" role="alert">
+                                    ❌ Отклонена @submission.ModeratedAt?.ToString("dd.MM.yyyy HH:mm")<br />
+                                    <strong>Причина:</strong> @submission.ModerationNote<br />
+                                    <strong>Модератор:</strong> @submission.ModeratorName
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(isSuccess ? "alert-success" : "alert-danger") mt-3" role="alert">
+            @message
+        </div>
+    }
+</div>
+
+@code {
+    private List<WorkSubmission>? submissions;
+    private string selectedContestId = "";
+    private string message = "";
+    private bool isSuccess = false;
+    private bool isLoading = false;
+    private Dictionary<string, string> rejectionNotes = new();
+
+    private async Task OnContestSelectedAsync(ChangeEventArgs e)
+    {
+        selectedContestId = e.Value?.ToString() ?? "";
+        if (!string.IsNullOrEmpty(selectedContestId))
+        {
+            await LoadSubmissionsAsync();
+        }
+    }
+
+    private async Task LoadSubmissionsAsync()
+    {
+        try
+        {
+            isLoading = true;
+            submissions = await ModerationService.GetModerationQueueAsync(selectedContestId);
+            message = "";
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка загрузки: {ex.Message}";
+            isSuccess = false;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ApproveAsync(string submissionId)
+    {
+        try
+        {
+            var result = await ModerationService.ApproveWorkAsync(
+                selectedContestId, submissionId, "Модератор");
+            
+            if (result)
+            {
+                message = "✅ Работа одобрена и добавлена в конкурс!";
+                isSuccess = true;
+                await LoadSubmissionsAsync();
+            }
+            else
+            {
+                message = "❌ Ошибка: работа не найдена";
+                isSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка: {ex.Message}";
+            isSuccess = false;
+        }
+    }
+
+    private async Task RejectAsync(string submissionId)
+    {
+        if (!rejectionNotes.TryGetValue(submissionId, out var note) || string.IsNullOrWhiteSpace(note))
+        {
+            message = "❌ Пожалуйста, укажите причину отклонения";
+            isSuccess = false;
+            return;
+        }
+
+        try
+        {
+            var result = await ModerationService.RejectWorkAsync(
+                selectedContestId, submissionId, note, "Модератор");
+            
+            if (result)
+            {
+                message = "✅ Работа отклонена и автору отправлено уведомление";
+                isSuccess = true;
+                rejectionNotes.Remove(submissionId);
+                await LoadSubmissionsAsync();
+            }
+            else
+            {
+                message = "❌ Ошибка: работа не найдена";
+                isSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка: {ex.Message}";
+            isSuccess = false;
+        }
+    }
+
+    private string GetStatusBadge(WorkStatus status) => status switch
+    {
+        WorkStatus.PendingModeration => "⏳ На модерации",
+        WorkStatus.UnderReview => "👀 На рассмотрении",
+        WorkStatus.Approved => "✅ Одобрена",
+        WorkStatus.Rejected => "❌ Отклонена",
+        _ => "❓ Неизвестно"
+    };
+}

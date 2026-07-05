@@ -1,0 +1,270 @@
+@page "/submit-work"
+@page "/submit-work/{ContestId}"
+@using VoteCounter.Web.Services
+@inject ModerationWebService ModerationService
+@inject NavigationManager NavigationManager
+
+@{
+    // Используем contestId из параметра URL, если не указан - используем default
+    var contestId = ContestId ?? "contest-1";
+}
+
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <h1>📝 Подать стихотворение</h1>
+            
+            <div class="alert alert-info" role="alert">
+                <strong>ℹ️ Ваше творчество:</strong> Поделитесь своим стихотворением. После проверки модератором оно будет добавлено в конкурс.
+            </div>
+
+            <form @onsubmit="SubmitWorkAsync" class="needs-validation">
+                <div class="mb-4">
+                    <label for="topic" class="form-label fw-bold">Тема стиха *</label>
+                    <select @bind="work.Topic" id="topic" class="form-select form-select-lg" required>
+                        <option value="">-- Выберите тему --</option>
+                        <option value="Nature">🌿 Природа</option>
+                        <option value="Love">💕 Любовь</option>
+                        <option value="Society">👥 Общество</option>
+                        <option value="Longing">🌙 Тоска</option>
+                        <option value="Joy">✨ Радость</option>
+                        <option value="Other">📖 Другое</option>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label for="subtitle" class="form-label fw-bold">Подзаголовок</label>
+                    <input @bind="work.Title" id="subtitle" type="text" class="form-control" 
+                           placeholder="Например: 'Посвящение весне' или оставьте пустым" />
+                    <small class="form-text text-muted">Необязательное поле для уточнения названия</small>
+                </div>
+
+                <div class="mb-4">
+                    <label for="poem" class="form-label fw-bold">Ваше стихотворение *</label>
+                    <textarea @bind="work.Content" id="poem" class="form-control" rows="15" 
+                              placeholder="Введите текст вашего стихотворения..." required 
+                              style="font-family: 'Courier New', monospace; line-height: 1.8;"></textarea>
+                    <small class="form-text text-muted">Сохраняются пробелы и переносы строк</small>
+                </div>
+
+                <div class="mb-4">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" 
+                            @onclick="CheckGrammarAsync" disabled="@(isChecking || string.IsNullOrEmpty(work.Content))">
+                        @if (isChecking)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            <span>Проверка...</span>
+                        }
+                        else
+                        {
+                            <span>🔍 Проверить грамотность</span>
+                        }
+                    </button>
+                </div>
+
+                @if (grammarReport != null)
+                {
+                    <div class="mb-4">
+                        <div class="card">
+                            <div class="card-header @GetReportHeaderClass()">
+                                <strong>📋 Результаты проверки</strong>
+                                <span class="badge float-end @GetReportBadgeClass()">
+                                    @if (grammarReport.Issues.Count == 0)
+                                    {
+                                        <span>✅ Всё хорошо!</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@grammarReport.Issues.Count проблем(ы)</span>
+                                    }
+                                </span>
+                            </div>
+                            <div class="card-body">
+                                @if (grammarReport.Issues.Count == 0)
+                                {
+                                    <div class="alert alert-success mb-0" role="alert">
+                                        ✅ Грамматических ошибок не найдено!
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var issue in grammarReport.Issues.OrderBy(i => i.Severity))
+                                    {
+                                        <div class="alert @GetIssueSeverityClass(issue.Severity) mb-2" role="alert">
+                                            <strong>@GetIssueSeverityIcon(issue.Severity) @issue.Severity:</strong>
+                                            <br />
+                                            @if (!string.IsNullOrEmpty(issue.Fragment))
+                                            {
+                                                <code style="background-color: rgba(0,0,0,0.05);">@issue.Fragment</code>
+                                                <br />
+                                            }
+                                            <span>@issue.Message</span>
+                                            @if (!string.IsNullOrEmpty(issue.Suggestion))
+                                            {
+                                                <br />
+                                                <small class="text-muted">💡 Совет: @issue.Suggestion</small>
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary btn-lg" disabled="@isSubmitting">
+                        @if (isSubmitting)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            <span>Отправка стиха...</span>
+                        }
+                        else
+                        {
+                            <span>✓ Подать</span>
+                        }
+                    </button>
+                </div>
+
+
+                @if (!string.IsNullOrEmpty(message))
+                {
+                    <div class="alert @(isSuccess ? "alert-success" : "alert-danger") mt-3" role="alert">
+                        @message
+                    </div>
+                }
+            </form>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string? ContestId { get; set; }
+    
+    private ContestWork work = new();
+    private string message = "";
+    private bool isSuccess = false;
+    private bool isSubmitting = false;
+    private bool isChecking = false;
+    private WorkSpellCheckReport? grammarReport = null;
+
+    private async Task CheckGrammarAsync()
+    {
+        if (string.IsNullOrEmpty(work.Content))
+        {
+            return;
+        }
+
+        try
+        {
+            isChecking = true;
+            grammarReport = await ModerationService.CheckGrammarAsync(work);
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка при проверке: {ex.Message}";
+            isSuccess = false;
+        }
+        finally
+        {
+            isChecking = false;
+        }
+    }
+
+    private string GetReportHeaderClass()
+    {
+        if (grammarReport?.Issues.Count == 0)
+            return "bg-success text-white";
+        
+        var hasErrors = grammarReport?.Issues.Any(i => i.Severity == WorkSpellIssueSeverity.Error) ?? false;
+        if (hasErrors)
+            return "bg-danger text-white";
+        
+        var hasWarnings = grammarReport?.Issues.Any(i => i.Severity == WorkSpellIssueSeverity.Warning) ?? false;
+        if (hasWarnings)
+            return "bg-warning text-dark";
+        
+        return "bg-info text-white";
+    }
+
+    private string GetReportBadgeClass()
+    {
+        if (grammarReport?.Issues.Count == 0)
+            return "bg-success";
+        
+        var hasErrors = grammarReport?.Issues.Any(i => i.Severity == WorkSpellIssueSeverity.Error) ?? false;
+        if (hasErrors)
+            return "bg-danger";
+        
+        var hasWarnings = grammarReport?.Issues.Any(i => i.Severity == WorkSpellIssueSeverity.Warning) ?? false;
+        if (hasWarnings)
+            return "bg-warning";
+        
+        return "bg-info";
+    }
+
+    private string GetIssueSeverityClass(WorkSpellIssueSeverity severity) => severity switch
+    {
+        WorkSpellIssueSeverity.Error => "alert-danger",
+        WorkSpellIssueSeverity.Warning => "alert-warning",
+        WorkSpellIssueSeverity.Info => "alert-info",
+        _ => "alert-secondary"
+    };
+
+    private string GetIssueSeverityIcon(WorkSpellIssueSeverity severity) => severity switch
+    {
+        WorkSpellIssueSeverity.Error => "❌",
+        WorkSpellIssueSeverity.Warning => "⚠️",
+        WorkSpellIssueSeverity.Info => "ℹ️",
+        _ => "•"
+    };
+
+    private async Task SubmitWorkAsync()
+    {
+        if (string.IsNullOrEmpty(work.Topic))
+        {
+            message = "❌ Пожалуйста, выберите тему стиха";
+            isSuccess = false;
+            return;
+        }
+
+        if (string.IsNullOrEmpty(work.Content))
+        {
+            message = "❌ Пожалуйста, введите текст стихотворения";
+            isSuccess = false;
+            return;
+        }
+
+        try
+        {
+            isSubmitting = true;
+            
+            var contestId = ContestId ?? "contest-1";
+            work.Status = WorkStatus.PendingModeration;
+            work.SubmittedAt = DateTime.Now;
+            work.Author = "Автор";  // TODO: получить из контекста юзера
+            
+            var submission = await ModerationService.SubmitWorkAsync(contestId, work);
+            
+            message = $"✅ Стихотворение успешно подано! Оно отправлено на модерацию.";
+            isSuccess = true;
+            
+            // Очистить форму
+            work = new();
+            
+            // Через 2 секунды перенаправить
+            await Task.Delay(2000);
+            NavigationManager.NavigateTo("/my-submissions");
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка: {ex.Message}";
+            isSuccess = false;
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

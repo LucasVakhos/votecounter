@@ -1,0 +1,6 @@
+@VoteCounter.Api_HostAddress = http://localhost:5234
+
+GET {{VoteCounter.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
