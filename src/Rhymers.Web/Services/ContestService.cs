@@ -230,6 +230,15 @@ public class ContestService
         return await _context.HallOfFameEntries.CountAsync();
     }
 
+    public async Task<List<HallOfFameEntry>> GetUserHallOfFameEntriesAsync(string authorName)
+    {
+        return await _context.HallOfFameEntries
+            .Where(e => e.Author == authorName)
+            .OrderByDescending(e => e.ContestDate)
+            .ThenBy(e => e.Place)
+            .ToListAsync();
+    }
+
     public async Task<int> SendSanctionsWarningToUsersAsync(string createdBy, string customMessage, IEnumerable<string> userIds)
     {
         return await SendSanctionsWarningToUsersPersonalizedAsync(createdBy, customMessage, userIds, null, null);
