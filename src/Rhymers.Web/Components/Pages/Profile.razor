@@ -4,6 +4,7 @@
 @inject AuthorizationWebService AuthService
 @inject ContestService ContestService
 @inject DiscussionService DiscussionService
+@inject SorrowChatWebService SorrowService
 @inject IJSRuntime JS
 
 <PageTitle>Профиль</PageTitle>
@@ -41,6 +42,77 @@
                                 <strong>@userPrizes.Count</strong> достижений
                             </dd>
                         </dl>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">🛡️ Нарушения и санкции</h5>
+                        @if (userViolations.Count > 0 && userViolations.All(v => v.IsCleared))
+                        {
+                            <span class="badge bg-success">✅ Реабилитирован</span>
+                        }
+                    </div>
+                    <div class="card-body">
+                        @if (userViolationStats?.IsSanctioned ?? false)
+                        {
+                            <div class="alert alert-warning py-2">
+                                <strong>Активная санкция:</strong> @GetSanctionDisplay(userViolationStats!.CurrentSanction)
+                                @if (userViolationStats.SanctionExpiredAt.HasValue)
+                                {
+                                    <span> до @userViolationStats.SanctionExpiredAt.Value.ToString("dd.MM.yyyy HH:mm")</span>
+                                }
+                                @if (!string.IsNullOrEmpty(userViolationStats.SanctionReason))
+                                {
+                                    <br />
+                                    <small>Причина: @userViolationStats.SanctionReason</small>
+                                }
+                            </div>
+                        }
+
+                        @if (userViolations.Count == 0)
+                        {
+                            <div class="text-muted">Нарушений не зафиксировано.</div>
+                        }
+                        else
+                        {
+                            <div class="mb-3 small text-muted">
+                                Видимость: для вас и модераторов/администраторов.
+                            </div>
+                            <div class="timeline-list">
+                                @foreach (var v in userViolations.OrderByDescending(x => x.CreatedAt))
+                                {
+                                    <div class="border rounded p-2 mb-2">
+                                        <div class="d-flex justify-content-between align-items-start mb-1">
+                                            <div>
+                                                <span class="badge @GetViolationBadgeClass(v.Type)">@GetViolationDisplay(v.Type)</span>
+                                                @if (v.IsCleared)
+                                                {
+                                                    <span class="badge bg-success ms-1">Снято</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-warning text-dark ms-1">Активно</span>
+                                                }
+                                                @if (v.Sanction != SanctionType.None)
+                                                {
+                                                    <span class="badge bg-danger ms-1">@GetSanctionDisplay(v.Sanction)</span>
+                                                }
+                                            </div>
+                                            <small class="text-muted">@v.CreatedAt.ToString("dd.MM.yyyy HH:mm")</small>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(v.Details))
+                                        {
+                                            <div class="small">@v.Details</div>
+                                        }
+                                        @if (v.IsCleared && v.ClearedAt.HasValue)
+                                        {
+                                            <small class="text-success">Снято: @v.ClearedAt.Value.ToString("dd.MM.yyyy HH:mm")</small>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
                     </div>
                 </div>
 
@@ -248,6 +320,8 @@
     private User? currentUser;
     private List<HallOfFameEntry> userPrizes = new();
     private List<WorkReview> userReviews = new();
+    private List<UserViolation> userViolations = new();
+    private UserViolationStats? userViolationStats;
     private bool isExporting = false;
 
     protected override async Task OnInitializedAsync()
@@ -257,6 +331,15 @@
         {
             userPrizes = await ContestService.GetUserHallOfFameEntriesAsync(currentUser.DisplayName);
             userReviews = await DiscussionService.GetReviewsReceivedByAuthorAsync(currentUser.DisplayName);
+
+            var contestId = "contest-1";
+            var contestViolations = await SorrowService.GetContestViolationsAsync(contestId, false);
+            userViolations = contestViolations
+                .Where(v => v.UserName.Equals(currentUser.DisplayName, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(v => v.CreatedAt)
+                .ToList();
+
+            userViolationStats = await SorrowService.GetUserViolationStatsAsync(contestId, currentUser.DisplayName);
         }
     }
 
@@ -271,9 +354,37 @@
     private string GetRoleDisplay(UserRole role) => role switch
     {
         UserRole.Admin => "👨‍💼 Администратор",
+        UserRole.Developer => "👨‍💻 Разработчик",
         UserRole.Moderator => "👮 Модератор",
         UserRole.Author => "✍️ Автор",
         _ => "👤 Читатель"
+    };
+
+    private string GetViolationDisplay(ViolationType type) => type switch
+    {
+        ViolationType.Rudeness => "🤬 Грубость",
+        ViolationType.Trolling => "🎣 Троллинг",
+        ViolationType.Spam => "📢 Спам",
+        ViolationType.Other => "⚠️ Прочее",
+        _ => "Нарушение"
+    };
+
+    private string GetViolationBadgeClass(ViolationType type) => type switch
+    {
+        ViolationType.Rudeness => "bg-danger",
+        ViolationType.Trolling => "bg-danger",
+        ViolationType.Spam => "bg-warning text-dark",
+        ViolationType.Other => "bg-secondary",
+        _ => "bg-secondary"
+    };
+
+    private string GetSanctionDisplay(SanctionType type) => type switch
+    {
+        SanctionType.OneDay => "⏰ 1 день",
+        SanctionType.OneWeek => "📅 7 дней",
+        SanctionType.OneMonth => "🗓️ 30 дней",
+        SanctionType.Permanent => "♾️ Постоянно",
+        _ => "Без санкции"
     };
 
     private string GetPlaceBadge(int place) => place switch
