@@ -109,6 +109,15 @@ public class ContestService
         await _context.SaveChangesAsync();
     }
 
+    public async Task<List<ContestVote>> GetContestVotesAsync(string contestId)
+    {
+        return await _context.ContestVotes
+            .Where(v => v.ContestId == contestId)
+            .OrderBy(v => v.SubmissionId)
+            .ThenBy(v => v.VoterUserId)
+            .ToListAsync();
+    }
+
     /// <summary>
     /// Создать новый конкурс
     /// </summary>

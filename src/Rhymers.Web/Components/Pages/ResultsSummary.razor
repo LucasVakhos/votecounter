@@ -1,0 +1,194 @@
+@page "/results-summary"
+@using Rhymers.Core.Models
+@using Rhymers.Web.Services
+@inject ContestService ContestService
+
+<div class="container mt-4">
+    <h1>Подведение итогов</h1>
+
+    @if (isLoading)
+    {
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Загрузка...</span>
+        </div>
+    }
+    else if (contest == null)
+    {
+        <div class="alert alert-info">Текущий конкурс не найден.</div>
+    }
+    else
+    {
+        <div class="alert @GetStageAlertClass()" role="alert">
+            <h5 class="alert-heading mb-1">Статус подведения итогов</h5>
+            <div>@GetStageMessage()</div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h4 class="mb-1">@contest.Name</h4>
+                <div class="text-muted">Конкурс №@contest.Number</div>
+                <div class="mt-2">
+                    <span class="badge text-bg-primary">@ContestService.GetContestStageTitle(ContestService.GetContestStage(contest))</span>
+                </div>
+            </div>
+        </div>
+
+        @if (rows.Count == 0)
+        {
+            <div class="alert alert-secondary">Пока нет оценок для формирования итогов.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Место</th>
+                            <th>№</th>
+                            <th>Тема</th>
+                            <th>Подзаголовок</th>
+                            <th>Автор</th>
+                            <th>Сумма</th>
+                            <th>Средний балл</th>
+                            <th>Оценок</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in rows)
+                        {
+                            <tr>
+                                <td><strong>@row.Place</strong></td>
+                                <td>@row.DisplayNo</td>
+                                <td>@row.Topic</td>
+                                <td>@row.Subtitle</td>
+                                <td>@GetAuthorDisplay(row.Author)</td>
+                                <td>@row.TotalScore</td>
+                                <td>@row.AverageScore.ToString("0.00")</td>
+                                <td>@row.VotesCount</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private Contest? contest;
+    private List<ResultRow> rows = new();
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        contest = await ContestService.GetCurrentContestAsync();
+        if (contest == null)
+        {
+            isLoading = false;
+            return;
+        }
+
+        var submissions = await ContestService.GetApprovedWorkSubmissionsAsync(contest.Id);
+        var votes = await ContestService.GetContestVotesAsync(contest.Id);
+
+        rows = BuildRows(submissions, votes);
+        isLoading = false;
+    }
+
+    private static List<ResultRow> BuildRows(List<WorkSubmission> submissions, List<ContestVote> votes)
+    {
+        var result = new List<ResultRow>();
+
+        foreach (var item in submissions.Select((value, index) => new { value, index }))
+        {
+            var submission = item.value;
+            var submissionVotes = votes.Where(v => v.SubmissionId == submission.Id).ToList();
+            var total = submissionVotes.Sum(v => v.Score);
+            var count = submissionVotes.Count;
+            var average = count == 0 ? 0 : (decimal)total / count;
+
+            result.Add(new ResultRow
+            {
+                SubmissionId = submission.Id,
+                DisplayNo = submission.Work.Number > 0 ? submission.Work.Number : item.index + 1,
+                Topic = submission.Work.Topic,
+                Subtitle = string.IsNullOrWhiteSpace(submission.Work.Subtitle)
+                    ? (string.IsNullOrWhiteSpace(submission.Work.Title) ? "-" : submission.Work.Title)
+                    : submission.Work.Subtitle,
+                Author = submission.Work.Author,
+                TotalScore = total,
+                VotesCount = count,
+                AverageScore = average
+            });
+        }
+
+        var ordered = result
+            .OrderByDescending(x => x.TotalScore)
+            .ThenByDescending(x => x.AverageScore)
+            .ThenBy(x => x.DisplayNo)
+            .ToList();
+
+        var place = 1;
+        foreach (var row in ordered)
+        {
+            row.Place = place;
+            place++;
+        }
+
+        return ordered;
+    }
+
+    private string GetAuthorDisplay(string author)
+    {
+        if (contest == null)
+            return "автор скрыт";
+
+        var stage = ContestService.GetContestStage(contest);
+        var canRevealAuthors = stage is ContestStage.VotingClosed or ContestStage.Finished;
+        if (!canRevealAuthors)
+            return "автор скрыт до объявления результатов";
+
+        return string.IsNullOrWhiteSpace(author) ? "автор не указан" : author;
+    }
+
+    private string GetStageMessage()
+    {
+        if (contest == null)
+            return "Данные конкурса недоступны.";
+
+        var stage = ContestService.GetContestStage(contest);
+        return stage switch
+        {
+            ContestStage.TopicReception => "Сейчас идет прием тем. Итоги появятся после голосования.",
+            ContestStage.WorkReception => "Сейчас идет прием работ. Итоги будут доступны после голосования.",
+            ContestStage.VotingOpen => "Голосование открыто. Таблица ниже показывает промежуточные данные.",
+            ContestStage.VotingClosed => "Голосование закрыто. Это страница официального подведения итогов.",
+            ContestStage.Finished => "Конкурс завершен. Итоги зафиксированы.",
+            _ => "Статус конкурса обновляется."
+        };
+    }
+
+    private string GetStageAlertClass()
+    {
+        if (contest == null)
+            return "alert-secondary";
+
+        var stage = ContestService.GetContestStage(contest);
+        return stage is ContestStage.VotingClosed or ContestStage.Finished
+            ? "alert-success"
+            : "alert-warning";
+    }
+
+    private sealed class ResultRow
+    {
+        public string SubmissionId { get; set; } = string.Empty;
+        public int Place { get; set; }
+        public int DisplayNo { get; set; }
+        public string Topic { get; set; } = string.Empty;
+        public string Subtitle { get; set; } = string.Empty;
+        public string Author { get; set; } = string.Empty;
+        public int TotalScore { get; set; }
+        public int VotesCount { get; set; }
+        public decimal AverageScore { get; set; }
+    }
+}
