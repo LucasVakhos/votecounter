@@ -167,6 +167,7 @@ public sealed class PersistenceService
         _context.Submissions.RemoveRange(_context.Submissions);
         _context.Topics.RemoveRange(_context.Topics);
         _context.TopicKinds.RemoveRange(_context.TopicKinds);
+        _context.ContestVotes.RemoveRange(_context.ContestVotes);
         _context.Voters.RemoveRange(_context.Voters);
 
         await _context.SaveChangesAsync();
@@ -256,6 +257,18 @@ public sealed class PersistenceService
                 Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                 Name TEXT NOT NULL UNIQUE,
                 SortNo INTEGER NOT NULL DEFAULT 0
+            );");
+
+        await _context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS ContestVotes(
+                ContestId TEXT NOT NULL,
+                SubmissionId TEXT NOT NULL,
+                VoterUserId TEXT NOT NULL,
+                VoterUsername TEXT NOT NULL,
+                Score INTEGER NOT NULL,
+                Comment TEXT NOT NULL DEFAULT '',
+                UpdatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(ContestId, SubmissionId, VoterUserId)
             );");
 
         await EnsureColumnAsync("ContestTopics", "TopicKindId", "INTEGER NULL");

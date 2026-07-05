@@ -61,6 +61,54 @@ public class ContestService
             .ToListAsync();
     }
 
+    public async Task<Dictionary<string, ContestVote>> GetUserContestVotesAsync(string contestId, string voterUserId)
+    {
+        var votes = await _context.ContestVotes
+            .Where(v => v.ContestId == contestId && v.VoterUserId == voterUserId)
+            .ToListAsync();
+
+        return votes.ToDictionary(v => v.SubmissionId, v => v);
+    }
+
+    public async Task SaveUserContestVotesAsync(
+        string contestId,
+        string voterUserId,
+        string voterUsername,
+        IEnumerable<(string SubmissionId, int Score, string Comment)> votes)
+    {
+        foreach (var item in votes)
+        {
+            var existing = await _context.ContestVotes.FirstOrDefaultAsync(v =>
+                v.ContestId == contestId &&
+                v.SubmissionId == item.SubmissionId &&
+                v.VoterUserId == voterUserId);
+
+            if (existing == null)
+            {
+                existing = new ContestVote
+                {
+                    ContestId = contestId,
+                    SubmissionId = item.SubmissionId,
+                    VoterUserId = voterUserId,
+                    VoterUsername = voterUsername,
+                    Score = item.Score,
+                    Comment = item.Comment,
+                    UpdatedAt = DateTime.Now
+                };
+                _context.ContestVotes.Add(existing);
+            }
+            else
+            {
+                existing.Score = item.Score;
+                existing.Comment = item.Comment;
+                existing.UpdatedAt = DateTime.Now;
+                _context.ContestVotes.Update(existing);
+            }
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
     /// <summary>
     /// Создать новый конкурс
     /// </summary>

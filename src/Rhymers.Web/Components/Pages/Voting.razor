@@ -1,0 +1,175 @@
+@page "/voting"
+@using Rhymers.Core.Models
+@using Rhymers.Web.Services
+@inject ContestService ContestService
+@inject AuthorizationWebService AuthService
+
+<div class="container mt-4">
+    <h1>Голосование</h1>
+
+    <div class="alert alert-primary" role="alert">
+        <h5 class="alert-heading mb-1">Объявление о голосовании</h5>
+        Голосуют все, но только после регистрации. Оценка и краткий комментарий видны только самому комментатору.
+    </div>
+
+    @if (currentUser == null)
+    {
+        <div class="alert alert-warning">
+            Для голосования нужно зарегистрироваться и войти в систему.
+            <a href="/auth/login" class="alert-link ms-1">Войти</a>
+        </div>
+        return;
+    }
+
+    @if (currentContest == null)
+    {
+        <div class="alert alert-info">Текущий конкурс не найден.</div>
+        return;
+    }
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <h4 class="mb-1">@currentContest.Name</h4>
+            <div class="text-muted">Конкурс №@currentContest.Number</div>
+            <div class="mt-2">
+                <span class="badge text-bg-secondary">@ContestService.GetContestStageTitle(ContestService.GetContestStage(currentContest))</span>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(message))
+    {
+        <div class="alert @(isSuccess ? "alert-success" : "alert-danger")">@message</div>
+    }
+
+    @if (works.Count == 0)
+    {
+        <div class="alert alert-secondary">Нет доступных работ для голосования.</div>
+    }
+    else
+    {
+        @foreach (var item in works.Select((value, index) => new { value, index }))
+        {
+            var work = item.value.Work;
+            var vote = GetOrCreateVote(item.value.Id);
+            var displayNo = work.Number > 0 ? work.Number : item.index + 1;
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div><strong>№</strong> @displayNo</div>
+                    <div><strong>Тема:</strong> @work.Topic - автор скрыт до объявления результатов</div>
+                    <div><strong>Подзаголовок:</strong> @(string.IsNullOrWhiteSpace(work.Subtitle) ? "-" : work.Subtitle)</div>
+
+                    <div class="mt-2"><strong>Текст работы:</strong></div>
+                    <div style="white-space: pre-wrap;">@work.Content</div>
+
+                    <hr />
+
+                    <div class="row g-2">
+                        <div class="col-md-3">
+                            <label class="form-label">Оценка</label>
+                            <input type="number" class="form-control" min="0" max="@maxAllowedScore" @bind="vote.Score" />
+                        </div>
+                        <div class="col-md-9">
+                            <label class="form-label">Краткий комментарий</label>
+                            <input type="text" maxlength="280" class="form-control" @bind="vote.Comment" placeholder="Комментарий виден только вам" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <button class="btn btn-success" @onclick="SaveVotesAsync">Сохранить голоса</button>
+    }
+</div>
+
+@code {
+    private User? currentUser;
+    private Contest? currentContest;
+    private List<WorkSubmission> works = new();
+    private readonly Dictionary<string, VoteFormModel> voteForm = new();
+    private int maxAllowedScore = 10;
+    private string message = string.Empty;
+    private bool isSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        if (currentUser == null)
+            return;
+
+        currentContest = await ContestService.GetCurrentContestAsync();
+        if (currentContest == null)
+            return;
+
+        maxAllowedScore = currentContest.MaxVote > 0 ? currentContest.MaxVote : 10;
+        works = await ContestService.GetApprovedWorkSubmissionsAsync(currentContest.Id);
+
+        var myVotes = await ContestService.GetUserContestVotesAsync(currentContest.Id, currentUser.Id);
+        foreach (var item in works)
+        {
+            if (myVotes.TryGetValue(item.Id, out var saved))
+            {
+                voteForm[item.Id] = new VoteFormModel
+                {
+                    Score = saved.Score,
+                    Comment = saved.Comment
+                };
+            }
+            else
+            {
+                voteForm[item.Id] = new VoteFormModel
+                {
+                    Score = Math.Clamp(currentContest.BaseVote, 0, maxAllowedScore),
+                    Comment = string.Empty
+                };
+            }
+        }
+    }
+
+    private VoteFormModel GetOrCreateVote(string submissionId)
+    {
+        if (voteForm.TryGetValue(submissionId, out var model))
+            return model;
+
+        var created = new VoteFormModel
+        {
+            Score = currentContest == null ? 0 : Math.Clamp(currentContest.BaseVote, 0, maxAllowedScore),
+            Comment = string.Empty
+        };
+
+        voteForm[submissionId] = created;
+        return created;
+    }
+
+    private async Task SaveVotesAsync()
+    {
+        if (currentContest == null || currentUser == null)
+            return;
+
+        foreach (var value in voteForm.Values)
+        {
+            value.Score = Math.Clamp(value.Score, 0, maxAllowedScore);
+            value.Comment = value.Comment?.Trim() ?? string.Empty;
+        }
+
+        var payload = voteForm
+            .Select(x => (x.Key, x.Value.Score, x.Value.Comment))
+            .ToList();
+
+        await ContestService.SaveUserContestVotesAsync(
+            currentContest.Id,
+            currentUser.Id,
+            currentUser.Username,
+            payload);
+
+        message = "Голоса и комментарии сохранены. Они видны только вам.";
+        isSuccess = true;
+    }
+
+    private sealed class VoteFormModel
+    {
+        public int Score { get; set; }
+        public string Comment { get; set; } = string.Empty;
+    }
+}

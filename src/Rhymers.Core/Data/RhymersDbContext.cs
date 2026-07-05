@@ -19,6 +19,7 @@ public sealed class RhymersDbContext : DbContext
     public DbSet<WorkSubmission> Submissions { get; set; } = null!;
     public DbSet<ContestTopic> Topics { get; set; } = null!;
     public DbSet<TopicKind> TopicKinds { get; set; } = null!;
+    public DbSet<ContestVote> ContestVotes { get; set; } = null!;
     public DbSet<VoterSetting> Voters { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -100,6 +101,19 @@ public sealed class RhymersDbContext : DbContext
             entity.Property(k => k.Name).HasMaxLength(128).IsRequired();
             entity.Property(k => k.SortNo).HasDefaultValue(0);
             entity.HasIndex(k => k.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<ContestVote>(entity =>
+        {
+            entity.ToTable("ContestVotes");
+            entity.HasKey(v => new { v.ContestId, v.SubmissionId, v.VoterUserId });
+            entity.Property(v => v.ContestId).HasMaxLength(256).IsRequired();
+            entity.Property(v => v.SubmissionId).HasMaxLength(256).IsRequired();
+            entity.Property(v => v.VoterUserId).HasMaxLength(256).IsRequired();
+            entity.Property(v => v.VoterUsername).HasMaxLength(256).IsRequired();
+            entity.Property(v => v.Comment).HasMaxLength(512);
+            entity.Property(v => v.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasIndex(v => v.ContestId);
         });
 
         // VoterSetting конфигурация

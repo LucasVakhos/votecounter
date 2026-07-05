@@ -98,6 +98,12 @@
         @if (currentUser?.Role >= UserRole.Reader)
         {
             <div class="nav-item px-3">
+                <NavLink class="nav-link" href="voting">
+                    <span class="oi oi-spreadsheet" aria-hidden="true"></span> 🗳 Голосование
+                </NavLink>
+            </div>
+
+            <div class="nav-item px-3">
                 <NavLink class="nav-link" href="votes/import">
                     <span class="oi oi-cloud-upload" aria-hidden="true"></span> 📤 Импорт голосов
                 </NavLink>
