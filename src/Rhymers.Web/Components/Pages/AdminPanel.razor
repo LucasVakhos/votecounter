@@ -313,9 +313,9 @@ else
                                                 <label class="form-label">Мин. риск для авторассылки</label>
                                                 <input type="number" min="0" max="10" step="0.1" class="form-control" @bind="sanctionsAutoRiskThreshold" />
                                                 <div class="btn-group btn-group-sm mt-2" role="group" aria-label="Risk threshold presets">
-                                                    <button type="button" class="btn btn-outline-secondary" @onclick="() => SetSanctionsRiskThreshold(1.0m)">1.0</button>
-                                                    <button type="button" class="btn btn-outline-secondary" @onclick="() => SetSanctionsRiskThreshold(1.5m)">1.5</button>
-                                                    <button type="button" class="btn btn-outline-secondary" @onclick="() => SetSanctionsRiskThreshold(2.0m)">2.0</button>
+                                                    <button type="button" class="@GetRiskPresetButtonClass(1.0m)" @onclick="() => SetSanctionsRiskThreshold(1.0m)">1.0</button>
+                                                    <button type="button" class="@GetRiskPresetButtonClass(1.5m)" @onclick="() => SetSanctionsRiskThreshold(1.5m)">1.5</button>
+                                                    <button type="button" class="@GetRiskPresetButtonClass(2.0m)" @onclick="() => SetSanctionsRiskThreshold(2.0m)">2.0</button>
                                                 </div>
                                             </div>
                                             <div class="col-md-6 d-flex align-items-end">
@@ -367,6 +367,7 @@ else
                                 <div class="form-text mb-2">Подстановки: {username}, {reason}, {risk}</div>
                                 <div class="d-flex gap-2 mb-3">
                                     <button class="btn btn-outline-secondary" @onclick="PreviewSanctionsMessageAsync" disabled="@(selectedSanctionsRecipientIds.Count == 0)">Предпросмотр</button>
+                                    <button class="btn btn-outline-secondary" @onclick="ClearSanctionsRecipients" disabled="@(selectedSanctionsRecipientIds.Count == 0)">Сбросить выбор получателей</button>
                                 </div>
 
                                 @if (!string.IsNullOrWhiteSpace(sanctionsPreviewText))
@@ -571,9 +572,24 @@ else
         return selectedSanctionsRecipientIds.Any(x => string.Equals(x, userId, StringComparison.OrdinalIgnoreCase));
     }
 
+    private void ClearSanctionsRecipients()
+    {
+        selectedSanctionsRecipientIds.Clear();
+        sanctionsPreviewText = string.Empty;
+        sanctionsBroadcastResult = "Список получателей очищен.";
+        sanctionsBroadcastSuccess = false;
+    }
+
     private void SetSanctionsRiskThreshold(decimal value)
     {
         sanctionsAutoRiskThreshold = value;
+    }
+
+    private string GetRiskPresetButtonClass(decimal preset)
+    {
+        return Math.Abs(sanctionsAutoRiskThreshold - preset) < 0.01m
+            ? "btn btn-secondary"
+            : "btn btn-outline-secondary";
     }
 
     private void ToggleContest(string contestId, bool isChecked)

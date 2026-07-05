@@ -52,9 +52,9 @@
                         <label class="form-label">Порог отклонения</label>
                         <input type="number" min="0" max="10" step="0.1" class="form-control" @bind="deviationThreshold" />
                         <div class="btn-group btn-group-sm mt-2" role="group" aria-label="Preset threshold buttons">
-                            <button type="button" class="btn btn-outline-secondary" @onclick="() => SetThreshold(0.3m)">0.3</button>
-                            <button type="button" class="btn btn-outline-secondary" @onclick="() => SetThreshold(0.5m)">0.5</button>
-                            <button type="button" class="btn btn-outline-secondary" @onclick="() => SetThreshold(1.0m)">1.0</button>
+                            <button type="button" class="@GetThresholdPresetButtonClass(0.3m)" @onclick="() => SetThreshold(0.3m)">0.3</button>
+                            <button type="button" class="@GetThresholdPresetButtonClass(0.5m)" @onclick="() => SetThreshold(0.5m)">0.5</button>
+                            <button type="button" class="@GetThresholdPresetButtonClass(1.0m)" @onclick="() => SetThreshold(1.0m)">1.0</button>
                         </div>
                     </div>
                     <div class="col-md-8">
@@ -168,6 +168,13 @@
     private void SetThreshold(decimal value)
     {
         deviationThreshold = value;
+    }
+
+    private string GetThresholdPresetButtonClass(decimal preset)
+    {
+        return Math.Abs(deviationThreshold - preset) < 0.01m
+            ? "btn btn-secondary"
+            : "btn btn-outline-secondary";
     }
 
     private static List<AuditRow> BuildAuditRows(List<WorkSubmission> submissions, List<ContestVote> votes)
