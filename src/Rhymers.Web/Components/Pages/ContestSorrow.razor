@@ -37,33 +37,63 @@
 
             @if (userViolationStats?.IsSanctioned ?? false)
             {
-                <div class="alert alert-warning" role="alert">
-                    <strong>⚠️ Вы временно ограничены в доступе к чату</strong><br>
-                    @if (userViolationStats.CurrentSanction == SanctionType.OneDay)
-                    {
-                        <span>Санкция на 1 день</span>
-                    }
-                    else if (userViolationStats.CurrentSanction == SanctionType.OneWeek)
-                    {
-                        <span>Санкция на 7 дней</span>
-                    }
-                    else if (userViolationStats.CurrentSanction == SanctionType.OneMonth)
-                    {
-                        <span>Санкция на 30 дней</span>
-                    }
-                    else if (userViolationStats.CurrentSanction == SanctionType.Permanent)
-                    {
-                        <span>Постоянная блокировка</span>
-                    }
-                    <br>
-                    @if (!string.IsNullOrEmpty(userViolationStats.SanctionTimeRemaining))
-                    {
-                        <small>Осталось: @userViolationStats.SanctionTimeRemaining</small>
-                    }
-                    @if (!string.IsNullOrEmpty(userViolationStats.SanctionReason))
-                    {
-                        <br><small>Причина: @userViolationStats.SanctionReason</small>
-                    }
+                <div class="card mb-4 border-warning">
+                    <div class="card-header bg-warning text-dark">
+                        <strong>⏱️ Вы временно ограничены в доступе к чату</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-warning mb-3" role="alert">
+                            @if (userViolationStats.CurrentSanction == SanctionType.OneDay)
+                            {
+                                <span>⚠️ Санкция на 1 день</span>
+                            }
+                            else if (userViolationStats.CurrentSanction == SanctionType.OneWeek)
+                            {
+                                <span>⚠️ Санкция на 7 дней</span>
+                            }
+                            else if (userViolationStats.CurrentSanction == SanctionType.OneMonth)
+                            {
+                                <span>⚠️ Санкция на 30 дней</span>
+                            }
+                            else if (userViolationStats.CurrentSanction == SanctionType.Permanent)
+                            {
+                                <span>🚫 Постоянная блокировка</span>
+                            }
+                            @if (!string.IsNullOrEmpty(userViolationStats.SanctionReason))
+                            {
+                                <br><small>Причина: @userViolationStats.SanctionReason</small>
+                            }
+                        </div>
+
+                        <div class="alert alert-info" role="alert">
+                            <h5 class="mb-2">⏳ Время до разблокировки:</h5>
+                            <h3 style="color: #d9534f; font-family: monospace;">@sanctionCountdown</h3>
+                            <small class="text-muted">Форма ввода недоступна на время санкции</small>
+                        </div>
+
+                        <form>
+                            <div class="mb-3">
+                                <label for="sanctionType" class="form-label">Тип переживания</label>
+                                <select id="sanctionType" class="form-select form-select-sm" disabled>
+                                    <option selected>🤔 Размышление</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="sanctionContent" class="form-label">Что вас волнует?</label>
+                                <textarea id="sanctionContent" class="form-control" rows="4"
+                                          placeholder="❌ Форма недоступна до конца санкции..." disabled
+                                          style="resize: vertical;"></textarea>
+                                <small class="form-text text-muted">Максимум 2000 символов</small>
+                            </div>
+
+                            <div class="d-flex justify-content-between">
+                                <button type="submit" class="btn btn-primary" disabled>
+                                    💬 Поделиться
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
                 return;
             }
@@ -493,6 +523,8 @@
     private bool isSuccess = false;
     private bool isSubmitting = false;
     private UserViolationStats? userViolationStats;
+    private string sanctionCountdown = string.Empty;
+    private System.Timers.Timer? sanctionTimer;
     
     // Reply system state
     private string? expandedDiscussionMessageId = null;
@@ -848,11 +880,94 @@
         try
         {
             userViolationStats = await SorrowService.GetUserViolationStatsAsync(contestId, currentUser.DisplayName);
+            
+            // Запустить таймер если есть активная санкция
+            if (userViolationStats?.IsSanctioned ?? false)
+            {
+                StartSanctionCountdownTimer();
+            }
+            else
+            {
+                StopSanctionCountdownTimer();
+            }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Error loading user violation stats: {ex.Message}");
         }
+    }
+
+    private void StartSanctionCountdownTimer()
+    {
+        if (sanctionTimer != null)
+            return;
+
+        sanctionTimer = new System.Timers.Timer(1000); // Обновлять каждую секунду
+        sanctionTimer.Elapsed += async (sender, e) =>
+        {
+            if (userViolationStats?.SanctionExpiredAt.HasValue ?? false)
+            {
+                var remaining = userViolationStats.SanctionExpiredAt.Value - DateTime.UtcNow;
+
+                if (remaining.TotalSeconds <= 0)
+                {
+                    // Санкция истекла, перезагрузить stats
+                    StopSanctionCountdownTimer();
+                    var contestId = ContestId ?? "contest-1";
+                    await LoadUserViolationStatsAsync(contestId);
+                    await InvokeAsync(StateHasChanged);
+                }
+                else
+                {
+                    // Обновить таймер
+                    sanctionCountdown = FormatTimeSpan(remaining);
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        };
+
+        sanctionTimer.AutoReset = true;
+        sanctionTimer.Start();
+        UpdateSanctionCountdownDisplay();
+    }
+
+    private void StopSanctionCountdownTimer()
+    {
+        if (sanctionTimer != null)
+        {
+            sanctionTimer.Stop();
+            sanctionTimer.Dispose();
+            sanctionTimer = null;
+            sanctionCountdown = string.Empty;
+        }
+    }
+
+    private void UpdateSanctionCountdownDisplay()
+    {
+        if (userViolationStats?.SanctionExpiredAt.HasValue ?? false)
+        {
+            var remaining = userViolationStats.SanctionExpiredAt.Value - DateTime.UtcNow;
+            if (remaining.TotalSeconds > 0)
+            {
+                sanctionCountdown = FormatTimeSpan(remaining);
+            }
+        }
+    }
+
+    private string FormatTimeSpan(TimeSpan ts)
+    {
+        if (ts.TotalSeconds <= 0)
+            return "00:00:00";
+
+        var days = (int)ts.TotalDays;
+        var hours = ts.Hours;
+        var minutes = ts.Minutes;
+        var seconds = ts.Seconds;
+
+        if (days > 0)
+            return $"{days}д {hours:D2}:{minutes:D2}:{seconds:D2}";
+        else
+            return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
     }
 
     private string GetViolationTypeDisplay(ViolationType type) => type switch
