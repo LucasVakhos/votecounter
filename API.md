@@ -243,6 +243,133 @@ GET /api/version
 }
 ```
 
+### Hall of Fame
+
+#### Get All Hall of Fame Entries
+```
+GET /api/hall-of-fame
+Query Parameters:
+  - skip: number (default: 0)
+  - take: number (default: 100)
+```
+
+**Response (200 OK):**
+```json
+[
+  {
+    "id": "hof-2026-001",
+    "contestId": "contest-2026-summer",
+    "contestNumber": "026",
+    "contestName": "Summer Poetry Contest 2026",
+    "place": 1,
+    "placeTitle": "🥇 First Place",
+    "workNumber": 5,
+    "topic": "Love & Nature",
+    "author": "Elena Kowalski",
+    "totalScore": 156.75,
+    "averageScore": 8.2,
+    "votesCount": 19,
+    "contestDate": "2026-06-30",
+    "addedAt": "2026-07-01T14:30:00Z"
+  }
+]
+```
+
+#### Get Hall of Fame by Contest
+```
+GET /api/hall-of-fame/contest/{contestId}
+```
+
+**Response (200 OK):**
+```json
+[
+  {
+    "id": "hof-2026-001",
+    "place": 1,
+    "placeTitle": "🥇 First Place",
+    "author": "Elena Kowalski",
+    "topic": "Love & Nature",
+    "totalScore": 156.75,
+    "averageScore": 8.2
+  },
+  {
+    "id": "hof-2026-002",
+    "place": 2,
+    "placeTitle": "🥈 Second Place",
+    "author": "Marcus Chen",
+    "topic": "Urban Dreams",
+    "totalScore": 145.50,
+    "averageScore": 7.6
+  }
+]
+```
+
+#### Get User's Hall of Fame Entries
+```
+GET /api/hall-of-fame/user/{authorName}
+```
+
+**Response (200 OK):**
+```json
+[
+  {
+    "id": "hof-2026-001",
+    "contestNumber": "026",
+    "contestName": "Summer Poetry Contest 2026",
+    "place": 1,
+    "topic": "Love & Nature",
+    "totalScore": 156.75,
+    "averageScore": 8.2,
+    "votesCount": 19,
+    "contestDate": "2026-06-30"
+  }
+]
+```
+
+#### Publish Winner to Hall of Fame
+```
+POST /api/hall-of-fame/publish
+Content-Type: application/json
+Authorization: Bearer {token} (Moderator+)
+```
+
+**Request Body:**
+```json
+{
+  "contestId": "contest-2026-summer",
+  "place": 1,
+  "placeTitle": "🥇 First Place",
+  "workNumber": 5,
+  "topic": "Love & Nature",
+  "author": "Elena Kowalski",
+  "totalScore": 156.75,
+  "averageScore": 8.2,
+  "votesCount": 19,
+  "contestDate": "2026-06-30"
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": "hof-2026-001",
+  "message": "Winner successfully published to Hall of Fame"
+}
+```
+
+#### Get Hall of Fame Entry Count
+```
+GET /api/hall-of-fame/count
+```
+
+**Response (200 OK):**
+```json
+{
+  "totalEntries": 156,
+  "totalContests": 12
+}
+```
+
 ## Error Responses
 
 ### 400 Bad Request

@@ -173,6 +173,98 @@ dotnet run --project src/Rhymers.Desktop/Rhymers.Desktop.csproj
 dotnet build Rhymers.sln
 ```
 
+## Core Components (v2.0)
+
+### Hall of Fame System
+**Purpose:** Persistent archive of contest winners with user achievement showcase
+
+**Key Classes:**
+- `HallOfFameEntry` (Model) — Domain model for archived winner records
+- `ContestService.PublishWinnerToHallOfFameAsync()` — Publication method
+- `ContestService.GetHallOfFameEntriesAsync()` — Retrieval with pagination
+- `ContestService.GetUserHallOfFameEntriesAsync()` — User-specific queries
+
+**Pages:**
+- `HallOfFame.razor` — Public read-only display of all winners
+- `Profile.razor` — User profile with personal achievement shelf and export button
+
+**Database:**
+- Table: `HallOfFameEntries` (16 columns, 3 indexes for fast queries)
+- Runtime created via `PersistenceService.EnsureSchemaExtensionsAsync()`
+
+**Flow:**
+1. Moderator finishes contest results → visits `WinnersAnnouncement.razor`
+2. Clicks "Publish to Hall of Fame" button
+3. Service publishes top-3 + nominations → stores in `HallOfFameEntries`
+4. Entries visible on `/hall-of-fame` (public) and `/profile` (user)
+5. Users can export shelf as PNG for sharing
+
+---
+
+### Fair Voting Audit Calculator
+**Purpose:** Reusable stateless calculation engine for audit logic
+
+**Location:** `Rhymers.Core.Services.FairVotingAuditCalculator`
+
+**Key Methods:**
+- `BuildRows(submissions, votes)` — Calculates fair-bot and admin-average scores
+- `FilterByDeviation(rows, threshold, onlySignificant)` — Threshold filtering with OR logic
+- `BuildRuleLabel(hasFairVote, hasAdminVote)` — Generates descriptive labels
+
+**Unit Tests:** 4 dedicated tests in `Rhymers.Tests.Services.FairVotingAuditCalculatorTests`
+
+**Used By:**
+- `FairVotingAudit.razor` — Displays dual-track audit data to moderators
+- Future: Could be reused by API or reporting services
+
+---
+
+### Antifraid Detection & Sanctions
+**Purpose:** Automatic detection and warning system for suspicious voting patterns
+
+**Key Methods in ContestService:**
+- `DetectAndDispatchUnfairVotingWarningsAsync()` — Background task runs every minute
+- `SendSanctionsWarningToUsersAsync()` — Bulk dispatch with customizable messages
+- `GetUserSanctionsAsync()` — Retrieve warnings per user
+
+**Detection Types:**
+- Self-voting above threshold
+- Extremes risk (unusual score patterns)
+- Favoritism (voting concentration)
+
+**Storage:**
+- Table: `UserSanctionNotifications` — Warning inbox for users
+- Table: `UserSanctionDispatchAudits` — Audit trail of dispatches
+
+**Workflow:**
+1. Background service runs `DetectAndDispatchUnfairVotingWarningsAsync()` every minute
+2. Analyzes all active contests with `UnfairVotingDetectionThreshold` enabled
+3. Identifies suspicious voters
+4. Creates warning notifications in user inbox
+5. Moderators can override/customize warnings
+
+---
+
+### Rollback Race-Condition Protection
+**Purpose:** Prevent background automation from undoing manual moderator actions
+
+**Implementation:**
+- New field: `Contest.LastManualRollbackAt` (DateTime?)
+- Guard clause: `if (contest.LastManualRollbackAt.HasValue && (now - contest.LastManualRollbackAt.Value).TotalMinutes < 2) continue;`
+
+**Applied To (3 automation methods):**
+1. `ApplyAutomaticStageSwitchesAsync()`
+2. `PublishAutomaticAdminAverageVotesAsync()`
+3. `DetectAndDispatchUnfairVotingWarningsAsync()`
+
+**Behavior:**
+- Moderator rolls back contest manually → sets `LastManualRollbackAt = now`
+- Background services skip this contest for 2 minutes
+- Allows clean manual intervention without interference
+- Time window is fixed (not configurable per contest)
+
+---
+
 ## Benefits of This Architecture
 
 1. **Separation of Concerns**
