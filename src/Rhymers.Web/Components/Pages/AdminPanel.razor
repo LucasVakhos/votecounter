@@ -202,7 +202,7 @@ else
                                             {
                                                 <div class="form-check">
                                                     <input class="form-check-input" type="checkbox" 
-                                                           @onchange="e => ToggleContest(contest.Id, (bool)e.Value)"
+                                                           @onchange="e => OnContestToggleChanged(contest.Id, e)"
                                                            id="contest_@contest.Id" />
                                                     <label class="form-check-label" for="contest_@contest.Id">
                                                         @contest.Name (№@contest.Number)
@@ -385,6 +385,12 @@ else
         {
             selectedContestIds.Remove(contestId);
         }
+    }
+
+    private void OnContestToggleChanged(string contestId, ChangeEventArgs e)
+    {
+        var isChecked = e.Value is bool flag && flag;
+        ToggleContest(contestId, isChecked);
     }
 
     private string GetRoleDisplay(UserRole role) => role switch

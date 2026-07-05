@@ -32,7 +32,8 @@ public sealed class ContentModerationResult
     {
         ContentRiskLevel.Low => "✅ Содержимое чистое, можно принимать",
         ContentRiskLevel.Medium => "⚠️ Требуется проверка, возможны проблемы",
-        ContentRiskLevel.High => "❌ Много проблем, рекомендуется отклонить"
+        ContentRiskLevel.High => "❌ Много проблем, рекомендуется отклонить",
+        _ => "⚠️ Требуется дополнительная ручная проверка"
     };
 }
 
@@ -126,11 +127,9 @@ public sealed class ContentModerationService
 
     private static void CheckForbiddenWords(string fullText, string[] lines, ContentModerationResult result)
     {
-        var lowerText = fullText.ToLower();
-
         foreach (var forbidden in ForbiddenWords)
         {
-            if (!lowerText.Contains(forbidden, StringComparison.OrdinalIgnoreCase))
+            if (!fullText.Contains(forbidden, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             // Найти строку с проблемой
@@ -216,11 +215,9 @@ public sealed class ContentModerationService
 
     private static void CheckExtremism(string content, ContentModerationResult result)
     {
-        var lowerContent = content.ToLower();
-
         // Проверяем на символы свастики (много вариантов)
-        if (lowerContent.Contains("卐") || lowerContent.Contains("☬") || 
-            lowerContent.Contains("卍") || lowerContent.Contains("🔱"))
+        if (content.Contains("卐", StringComparison.Ordinal) || content.Contains("☬", StringComparison.Ordinal) || 
+            content.Contains("卍", StringComparison.Ordinal) || content.Contains("🔱", StringComparison.Ordinal))
         {
             result.Problems.Add(new ContentProblem
             {
@@ -235,7 +232,7 @@ public sealed class ContentModerationService
         var extremistDomains = new[] { ".ru/extremism", "telegram.me/", "vk.com/public" };
         foreach (var domain in extremistDomains)
         {
-            if (lowerContent.Contains(domain))
+            if (content.Contains(domain, StringComparison.OrdinalIgnoreCase))
             {
                 result.Problems.Add(new ContentProblem
                 {

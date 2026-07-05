@@ -2,6 +2,7 @@
 @using Rhymers.Web.Services
 @using Rhymers.Core.Models
 @inject ModerationWebService ModerationService
+@inject ContestService ContestService
 @inject AuthorizationWebService AuthService
 
 <div class="container mt-4">
@@ -29,12 +30,30 @@
         <strong>⚠️ Модератор:</strong> Здесь вы видите работы, отправленные на проверку.
     </div>
 
-    <div class="mb-3">
-        <select @bind="selectedContestId" @bind:event="oninput" class="form-select" @onchange="OnContestSelectedAsync">
+    <div class="row g-2 mb-3">
+        <div class="col-md-5">
+            <select value="@selectedContestId" class="form-select" @onchange="OnContestSelectedAsync">
             <option value="">-- Выберите конкурс --</option>
-            <option value="contest-1">Конкурс 1</option>
-            <option value="contest-2">Конкурс 2</option>
+            @foreach (var contest in contests)
+            {
+                <option value="@contest.Id">@contest</option>
+            }
         </select>
+        </div>
+        <div class="col-md-4">
+            <select value="@selectedStatusFilter" class="form-select" @onchange="OnStatusFilterChanged">
+                <option value="pending">Только на модерации</option>
+                <option value="under-review">Только на проверке</option>
+                <option value="approved">Только одобренные</option>
+                <option value="rejected">Только отклонённые</option>
+                <option value="all">Все статусы</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <button type="button" class="btn btn-outline-info w-100" @onclick="CheckVisibleContentAsync" disabled="@(filteredSubmissions.Count == 0)">
+                🔎 Проверить видимые
+            </button>
+        </div>
     </div>
 
     @if (string.IsNullOrEmpty(selectedContestId))
@@ -47,14 +66,14 @@
             <span class="visually-hidden">Загрузка...</span>
         </div>
     }
-    else if (submissions == null || submissions.Count == 0)
+    else if (filteredSubmissions.Count == 0)
     {
         <div class="alert alert-success">✅ Нет работ на модерации!</div>
     }
     else
     {
         <div class="row">
-            @foreach (var submission in submissions)
+            @foreach (var submission in filteredSubmissions)
             {
                 <div class="col-md-6 mb-4">
                     <div class="card border-warning h-100">
@@ -158,8 +177,11 @@
 
 @code {
     private List<WorkSubmission>? submissions;
+    private List<WorkSubmission> filteredSubmissions = new();
+    private List<Contest> contests = new();
     private User? currentUser;
     private string selectedContestId = "";
+    private string selectedStatusFilter = "pending";
     private string message = "";
     private bool isSuccess = false;
     private bool isLoading = false;
@@ -169,6 +191,8 @@
     protected override async Task OnInitializedAsync()
     {
         currentUser = await AuthService.GetCurrentUserAsync();
+        var loadedContests = await ContestService.GetContestsAsync();
+        contests = loadedContests.ToList();
     }
 
     private async Task OnContestSelectedAsync(ChangeEventArgs e)
@@ -179,6 +203,18 @@
             contentCheckResults.Clear();
             await LoadSubmissionsAsync();
         }
+        else
+        {
+            submissions = null;
+            filteredSubmissions.Clear();
+        }
+    }
+
+    private Task OnStatusFilterChanged(ChangeEventArgs e)
+    {
+        selectedStatusFilter = e.Value?.ToString() ?? "pending";
+        ApplyStatusFilter();
+        return Task.CompletedTask;
     }
 
     private async Task LoadSubmissionsAsync()
@@ -186,7 +222,8 @@
         try
         {
             isLoading = true;
-            submissions = await ModerationService.GetModerationQueueAsync(selectedContestId);
+            submissions = await ModerationService.GetAllSubmissionsAsync(selectedContestId);
+            ApplyStatusFilter();
             message = "";
         }
         catch (Exception ex)
@@ -198,6 +235,36 @@
         {
             isLoading = false;
         }
+    }
+
+    private async Task CheckVisibleContentAsync()
+    {
+        foreach (var submission in filteredSubmissions)
+        {
+            if (contentCheckResults.ContainsKey(submission.Id))
+                continue;
+
+            var result = await ModerationService.CheckContentAsync(submission.Work);
+            contentCheckResults[submission.Id] = result;
+        }
+    }
+
+    private void ApplyStatusFilter()
+    {
+        if (submissions == null)
+        {
+            filteredSubmissions = new List<WorkSubmission>();
+            return;
+        }
+
+        filteredSubmissions = selectedStatusFilter switch
+        {
+            "all" => submissions,
+            "under-review" => submissions.Where(s => s.Status == WorkStatus.UnderReview).ToList(),
+            "approved" => submissions.Where(s => s.Status == WorkStatus.Approved).ToList(),
+            "rejected" => submissions.Where(s => s.Status == WorkStatus.Rejected).ToList(),
+            _ => submissions.Where(s => s.Status == WorkStatus.PendingModeration).ToList()
+        };
     }
 
     private async Task CheckContentAsync(WorkSubmission submission)
