@@ -72,6 +72,12 @@ public sealed class Contest
     // Порог риска, начиная с которого участник считается подозрительным для автоотбора.
     public decimal UnfairVotingDetectionThreshold { get; set; } = 1.5m;
 
+    // Автосанкции в чате при накоплении активных нарушений.
+    public bool AutoSanctionsEnabled { get; set; }
+    public int AutoSanctionOneDayThreshold { get; set; } = 3;
+    public int AutoSanctionOneWeekThreshold { get; set; } = 5;
+    public int AutoSanctionOneMonthThreshold { get; set; } = 10;
+
     // Минимум оценок пользователя для участия в антифрод-анализе.
     public int UnfairVotingMinVotesForAnalysis { get; set; } = 5;
 

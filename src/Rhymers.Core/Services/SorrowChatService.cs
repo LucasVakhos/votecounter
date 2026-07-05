@@ -184,8 +184,76 @@ public sealed class SorrowChatService
         if (_notifications != null)
             await _notifications.NotifyViolationMarkedAsync(message.AuthorName, type, details);
 
+        // Автосанкции по порогам конкурса (Phase 22)
+        var contest = await _context.Contests.FirstOrDefaultAsync(c => c.Id == contestId);
+        if (contest?.AutoSanctionsEnabled == true)
+        {
+            var activeViolations = await _context.UserViolations
+                .CountAsync(v => v.ContestId == contestId && v.UserName == message.AuthorName && !v.IsCleared);
+
+            var autoSanction = DetermineAutoSanction(activeViolations, contest);
+            var currentSanction = await GetActiveSanctionAsync(contestId, message.AuthorName);
+
+            // Применяем, если санкции нет или новая санкция строже текущей.
+            if (autoSanction != SanctionType.None && (currentSanction == null || autoSanction > currentSanction.Sanction))
+            {
+                violation.Sanction = autoSanction;
+                violation.SanctionAdminName = "AutoModerator";
+                violation.SanctionAppliedAt = DateTime.UtcNow;
+                violation.SanctionReason = $"Автосанкция: {activeViolations} активных нарушений (порог: {GetThresholdForSanction(autoSanction, contest)})";
+                violation.SanctionExpiredAt = autoSanction switch
+                {
+                    SanctionType.OneDay => DateTime.UtcNow.AddDays(1),
+                    SanctionType.OneWeek => DateTime.UtcNow.AddDays(7),
+                    SanctionType.OneMonth => DateTime.UtcNow.AddDays(30),
+                    SanctionType.Permanent => null,
+                    _ => null
+                };
+
+                _context.UserViolations.Update(violation);
+                await _context.SaveChangesAsync();
+
+                if (_auditLog != null)
+                {
+                    await _auditLog.LogAsync(
+                        AuditAction.AutoSanctionApplied,
+                        "AutoModerator",
+                        UserRole.Admin,
+                        message.AuthorName,
+                        $"Автосанкция {autoSanction}: {activeViolations} активных нарушений",
+                        contestId,
+                        violation.Id);
+                }
+
+                if (_notifications != null)
+                    await _notifications.NotifySanctionAppliedAsync(message.AuthorName, autoSanction, violation.SanctionReason, violation.SanctionExpiredAt);
+
+                await PostSanctionAnnouncementAsync(contestId, message.AuthorName, autoSanction, violation.SanctionReason);
+            }
+        }
+
         return violation;
     }
+
+    private static SanctionType DetermineAutoSanction(int activeViolations, Contest contest)
+    {
+        if (activeViolations >= contest.AutoSanctionOneMonthThreshold)
+            return SanctionType.OneMonth;
+        if (activeViolations >= contest.AutoSanctionOneWeekThreshold)
+            return SanctionType.OneWeek;
+        if (activeViolations >= contest.AutoSanctionOneDayThreshold)
+            return SanctionType.OneDay;
+
+        return SanctionType.None;
+    }
+
+    private static int GetThresholdForSanction(SanctionType sanctionType, Contest contest) => sanctionType switch
+    {
+        SanctionType.OneDay => contest.AutoSanctionOneDayThreshold,
+        SanctionType.OneWeek => contest.AutoSanctionOneWeekThreshold,
+        SanctionType.OneMonth => contest.AutoSanctionOneMonthThreshold,
+        _ => 0
+    };
 
     /// <summary>
     /// Получить статистику нарушений пользователя

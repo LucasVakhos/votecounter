@@ -368,6 +368,31 @@ public class ContestService
         return true;
     }
 
+    public async Task<bool> SaveAutoSanctionSettingsAsync(
+        string contestId,
+        bool enabled,
+        int oneDayThreshold,
+        int oneWeekThreshold,
+        int oneMonthThreshold)
+    {
+        var contest = await _context.Contests.FirstOrDefaultAsync(c => c.Id == contestId);
+        if (contest == null)
+            return false;
+
+        var day = Math.Clamp(oneDayThreshold, 1, 100);
+        var week = Math.Clamp(oneWeekThreshold, day, 100);
+        var month = Math.Clamp(oneMonthThreshold, week, 100);
+
+        contest.AutoSanctionsEnabled = enabled;
+        contest.AutoSanctionOneDayThreshold = day;
+        contest.AutoSanctionOneWeekThreshold = week;
+        contest.AutoSanctionOneMonthThreshold = month;
+        contest.UpdatedAt = DateTime.Now;
+
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
     public async Task<List<UnfairVotingSuspect>> DetectPotentialUnfairVotingAsync(string contestId)
     {
         var contest = await _context.Contests.FirstOrDefaultAsync(c => c.Id == contestId);

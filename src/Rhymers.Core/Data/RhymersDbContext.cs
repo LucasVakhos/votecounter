@@ -70,6 +70,10 @@ public sealed class RhymersDbContext : DbContext
             entity.Property(c => c.AutoFairVotingEnabled).HasDefaultValue(false);
             entity.Property(c => c.AutoAdminAverageVotingOnCloseEnabled).HasDefaultValue(false);
             entity.Property(c => c.UnfairVotingDetectionThreshold).HasDefaultValue(1.5m);
+            entity.Property(c => c.AutoSanctionsEnabled).HasDefaultValue(false);
+            entity.Property(c => c.AutoSanctionOneDayThreshold).HasDefaultValue(3);
+            entity.Property(c => c.AutoSanctionOneWeekThreshold).HasDefaultValue(5);
+            entity.Property(c => c.AutoSanctionOneMonthThreshold).HasDefaultValue(10);
             entity.Property(c => c.UnfairVotingMinVotesForAnalysis).HasDefaultValue(5);
             entity.Property(c => c.UnfairVotingSelfVoteRiskWeight).HasDefaultValue(1.5m);
             entity.Property(c => c.UnfairVotingExtremesRiskWeight).HasDefaultValue(1.0m);

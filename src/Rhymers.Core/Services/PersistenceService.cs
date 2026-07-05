@@ -337,6 +337,10 @@ public sealed class PersistenceService
         await EnsureColumnAsync("ContestTopics", "ProposedBy", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync("ContestTopics", "IsWinnerTopic", "INTEGER NOT NULL DEFAULT 0");
         await EnsureColumnAsync("ContestTopics", "SubmittedAt", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP");
+        await EnsureColumnAsync("Contests", "AutoSanctionsEnabled", "INTEGER NOT NULL DEFAULT 0");
+        await EnsureColumnAsync("Contests", "AutoSanctionOneDayThreshold", "INTEGER NOT NULL DEFAULT 3");
+        await EnsureColumnAsync("Contests", "AutoSanctionOneWeekThreshold", "INTEGER NOT NULL DEFAULT 5");
+        await EnsureColumnAsync("Contests", "AutoSanctionOneMonthThreshold", "INTEGER NOT NULL DEFAULT 10");
 
         await _context.Database.ExecuteSqlRawAsync(@"
             CREATE TABLE IF NOT EXISTS HallOfFameEntries(

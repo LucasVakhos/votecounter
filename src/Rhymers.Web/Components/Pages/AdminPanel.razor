@@ -16,7 +16,7 @@
         </div>
     </div>
 }
-else if (currentUser.Role != UserRole.Admin)
+else if (currentUser.Role < UserRole.Admin)
 {
     <div class="container mt-4">
         <div class="alert alert-danger" role="alert">
@@ -358,6 +358,35 @@ else
                                                 </div>
                                             </div>
                                         </div>
+
+                                        <div class="border rounded p-2 mb-2 bg-light">
+                                            <div class="fw-semibold mb-2">Настройки авто-санкций чата (Phase 22)</div>
+                                            <div class="form-check mb-2">
+                                                <input class="form-check-input" type="checkbox" id="autoSanctionsEnabled" @bind="autoSanctionsEnabled" />
+                                                <label class="form-check-label" for="autoSanctionsEnabled">Включить авто-санкции при накоплении активных нарушений</label>
+                                            </div>
+                                            <div class="row g-2">
+                                                <div class="col-md-4">
+                                                    <label class="form-label small">Порог на 1 день</label>
+                                                    <input type="number" min="1" max="100" step="1" class="form-control form-control-sm" @bind="autoSanctionOneDayThreshold" />
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label small">Порог на 7 дней</label>
+                                                    <input type="number" min="1" max="100" step="1" class="form-control form-control-sm" @bind="autoSanctionOneWeekThreshold" />
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label small">Порог на 30 дней</label>
+                                                    <input type="number" min="1" max="100" step="1" class="form-control form-control-sm" @bind="autoSanctionOneMonthThreshold" />
+                                                </div>
+                                            </div>
+                                            <button class="btn btn-outline-danger btn-sm mt-2" @onclick="SaveAutoSanctionSettingsAsync" disabled="@string.IsNullOrWhiteSpace(sanctionsContestId)">Сохранить настройки авто-санкций</button>
+                                            @if (!string.IsNullOrWhiteSpace(autoSanctionSettingsResult))
+                                            {
+                                                <div class="alert @(autoSanctionSettingsSuccess ? "alert-success" : "alert-warning") mt-2 mb-0 py-2">
+                                                    @autoSanctionSettingsResult
+                                                </div>
+                                            }
+                                        </div>
                                         <div class="d-flex gap-2 flex-wrap">
                                             <button class="btn btn-outline-danger btn-sm" @onclick="AnalyzeSuspectsAsync" disabled="@string.IsNullOrWhiteSpace(sanctionsContestId)">Найти пойманных анализом</button>
                                             <button class="btn btn-outline-secondary btn-sm" @onclick="SelectAllDetectedSuspects" disabled="@(suspects.Count == 0)">Выбрать всех пойманных</button>
@@ -515,6 +544,10 @@ else
     private decimal unfairVotingSelfVoteWeight = 1.5m;
     private decimal unfairVotingExtremesWeight = 1.0m;
     private decimal unfairVotingFavoritismWeight = 1.2m;
+    private bool autoSanctionsEnabled;
+    private int autoSanctionOneDayThreshold = 3;
+    private int autoSanctionOneWeekThreshold = 5;
+    private int autoSanctionOneMonthThreshold = 10;
     private bool autoSelectOnlyByRiskThreshold = true;
     private string sanctionsWarningMessage = "Пользователь {username}, по результатам анализа зафиксированы признаки недобросовестной конкуренции: {reason}. Текущий риск: {risk}. Если нарушение повторится, будут применены санкции: аннулирование голосов, дисквалификация работы и ограничение участия.";
     private string sanctionsBroadcastResult = string.Empty;
@@ -524,11 +557,13 @@ else
     private int lastSentCount;
     private bool sanctionsBroadcastSuccess;
     private bool unfairVotingSettingsSuccess;
+    private string autoSanctionSettingsResult = string.Empty;
+    private bool autoSanctionSettingsSuccess;
 
     protected override async Task OnInitializedAsync()
     {
         currentUser = await AuthService.GetCurrentUserAsync();
-        if (currentUser?.Role == UserRole.Admin)
+        if (currentUser?.Role >= UserRole.Admin)
         {
             await LoadDataAsync();
         }
@@ -630,6 +665,30 @@ else
         unfairVotingSettingsResult = success
             ? "Настройки антифрода сохранены для выбранного конкурса."
             : "Не удалось сохранить настройки антифрода.";
+
+        if (!success)
+            return;
+
+        contests = (await ContestService.GetContestsAsync()).ToList();
+        ApplyContestAntiFraudSettingsFromSelected();
+    }
+
+    private async Task SaveAutoSanctionSettingsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(sanctionsContestId))
+            return;
+
+        var success = await ContestService.SaveAutoSanctionSettingsAsync(
+            sanctionsContestId,
+            autoSanctionsEnabled,
+            autoSanctionOneDayThreshold,
+            autoSanctionOneWeekThreshold,
+            autoSanctionOneMonthThreshold);
+
+        autoSanctionSettingsSuccess = success;
+        autoSanctionSettingsResult = success
+            ? "Настройки авто-санкций сохранены."
+            : "Не удалось сохранить настройки авто-санкций.";
 
         if (!success)
             return;
@@ -826,6 +885,10 @@ else
         unfairVotingSelfVoteWeight = contest.UnfairVotingSelfVoteRiskWeight;
         unfairVotingExtremesWeight = contest.UnfairVotingExtremesRiskWeight;
         unfairVotingFavoritismWeight = contest.UnfairVotingFavoritismRiskWeight;
+        autoSanctionsEnabled = contest.AutoSanctionsEnabled;
+        autoSanctionOneDayThreshold = contest.AutoSanctionOneDayThreshold;
+        autoSanctionOneWeekThreshold = contest.AutoSanctionOneWeekThreshold;
+        autoSanctionOneMonthThreshold = contest.AutoSanctionOneMonthThreshold;
     }
 
     private async Task RefreshSanctionsAuditAsync()
@@ -858,6 +921,7 @@ else
         UserRole.Author => "✍️ Автор",
         UserRole.Moderator => "🔍 Модератор",
         UserRole.Admin => "👨‍💼 Администратор",
+        UserRole.Developer => "👨‍💻 Разработчик",
         _ => "?"
     };
 
@@ -867,6 +931,7 @@ else
         UserRole.Author => "bg-success",
         UserRole.Moderator => "bg-warning text-dark",
         UserRole.Admin => "bg-danger",
+        UserRole.Developer => "bg-dark",
         _ => "bg-secondary"
     };
 }
