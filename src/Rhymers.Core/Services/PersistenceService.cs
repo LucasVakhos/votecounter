@@ -171,6 +171,7 @@ public sealed class PersistenceService
         _context.ContestStageTimelineEvents.RemoveRange(_context.ContestStageTimelineEvents);
         _context.UserSanctionNotifications.RemoveRange(_context.UserSanctionNotifications);
         _context.UserSanctionDispatchAudits.RemoveRange(_context.UserSanctionDispatchAudits);
+        _context.HallOfFameEntries.RemoveRange(_context.HallOfFameEntries);
         _context.Voters.RemoveRange(_context.Voters);
 
         await _context.SaveChangesAsync();
@@ -336,6 +337,26 @@ public sealed class PersistenceService
         await EnsureColumnAsync("ContestTopics", "ProposedBy", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync("ContestTopics", "IsWinnerTopic", "INTEGER NOT NULL DEFAULT 0");
         await EnsureColumnAsync("ContestTopics", "SubmittedAt", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP");
+
+        await _context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS HallOfFameEntries(
+                Id TEXT NOT NULL PRIMARY KEY,
+                ContestId TEXT NOT NULL,
+                ContestNumber TEXT NOT NULL,
+                ContestName TEXT NOT NULL,
+                Place INTEGER NOT NULL,
+                PlaceTitle TEXT NOT NULL,
+                WorkNumber INTEGER NOT NULL,
+                Topic TEXT NOT NULL,
+                Author TEXT NOT NULL,
+                TotalScore INTEGER NOT NULL,
+                AverageScore REAL NOT NULL,
+                VotesCount INTEGER NOT NULL,
+                AuthorPhotoUrl TEXT,
+                Description TEXT,
+                AddedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ContestDate TEXT NOT NULL
+            );");
 
         await _context.Database.ExecuteSqlRawAsync(@"
             INSERT OR IGNORE INTO TopicKinds(Id, Name, SortNo) VALUES(1, 'Строка', 1);

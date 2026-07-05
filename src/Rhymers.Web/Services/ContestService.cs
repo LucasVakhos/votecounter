@@ -179,6 +179,57 @@ public class ContestService
         return true;
     }
 
+    public async Task<bool> PublishWinnerToHallOfFameAsync(string contestId, int place, string placeTitle, 
+        int workNumber, string topic, string author, int totalScore, decimal averageScore, int votesCount)
+    {
+        var contest = await _context.Contests.FirstOrDefaultAsync(c => c.Id == contestId);
+        if (contest == null)
+            return false;
+
+        var entry = new HallOfFameEntry
+        {
+            ContestId = contestId,
+            ContestNumber = contest.Number,
+            ContestName = contest.Name,
+            Place = place,
+            PlaceTitle = placeTitle,
+            WorkNumber = workNumber,
+            Topic = topic,
+            Author = author,
+            TotalScore = totalScore,
+            AverageScore = averageScore,
+            VotesCount = votesCount,
+            ContestDate = contest.StartedAt
+        };
+
+        _context.HallOfFameEntries.Add(entry);
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<List<HallOfFameEntry>> GetHallOfFameEntriesAsync(int skip = 0, int take = 100)
+    {
+        return await _context.HallOfFameEntries
+            .OrderByDescending(e => e.ContestDate)
+            .ThenBy(e => e.Place)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync();
+    }
+
+    public async Task<List<HallOfFameEntry>> GetHallOfFameByContestAsync(string contestId)
+    {
+        return await _context.HallOfFameEntries
+            .Where(e => e.ContestId == contestId)
+            .OrderBy(e => e.Place)
+            .ToListAsync();
+    }
+
+    public async Task<int> GetHallOfFameCountAsync()
+    {
+        return await _context.HallOfFameEntries.CountAsync();
+    }
+
     public async Task<int> SendSanctionsWarningToUsersAsync(string createdBy, string customMessage, IEnumerable<string> userIds)
     {
         return await SendSanctionsWarningToUsersPersonalizedAsync(createdBy, customMessage, userIds, null, null);

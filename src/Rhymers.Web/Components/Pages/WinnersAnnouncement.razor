@@ -20,7 +20,15 @@
     }
     else if (rows.Count == 0)
     {
-        <div class="alert alert-secondary">Недостаточно данных для церемонии награждения.</div>
+        <div class="alert alert-warning">
+            <strong>Недостаточно данных для церемонии награждения.</strong>
+            <p class="mb-0 mt-2">Убедитесь, что:</p>
+            <ul class="mb-0">
+                <li>есть одобренные работы</li>
+                <li>собраны голосы участников</li>
+                <li>конкурс находится на стадии объявления результатов</li>
+            </ul>
+        </div>
     }
     else
     {
@@ -117,6 +125,33 @@
                 </ul>
             </div>
         </div>
+
+        @if (canEditPraise)
+        {
+            <div class="card mb-3 border-success">
+                <div class="card-header bg-success-subtle">
+                    <strong>Публикация в зал славы</strong>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Сохраните победителей этого конкурса в архив зала славы для последующих поколений.</p>
+                    <button class="btn btn-success" @onclick="PublishToHallOfFameAsync" disabled="@isPublishing">
+                        @if (isPublishing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            <span>Публикация...</span>
+                        }
+                        else
+                        {
+                            <span>Опубликовать победителей в зал славы</span>
+                        }
+                    </button>
+                    @if (!string.IsNullOrWhiteSpace(publishMessage))
+                    {
+                        <div class="mt-2 alert @(publishSuccess ? "alert-success" : "alert-warning") py-2">@publishMessage</div>
+                    }
+                </div>
+            </div>
+        }
     }
 </div>
 
@@ -132,6 +167,9 @@
     private string editablePraiseText = string.Empty;
     private string editorMessage = string.Empty;
     private bool editorSuccess;
+    private string publishMessage = string.Empty;
+    private bool publishSuccess;
+    private bool isPublishing;
     private bool isLoading = true;
 
     protected override async Task OnInitializedAsync()
@@ -186,6 +224,77 @@
 
         editablePraiseText = string.Empty;
         await SavePraiseTextAsync();
+    }
+
+    private async Task PublishToHallOfFameAsync()
+    {
+        if (contest == null || !canEditPraise || podium.Count == 0)
+            return;
+
+        isPublishing = true;
+        publishMessage = string.Empty;
+        publishSuccess = false;
+
+        try
+        {
+            var successCount = 0;
+
+            foreach (var winner in podium)
+            {
+                var ok = await ContestService.PublishWinnerToHallOfFameAsync(
+                    contest.Id,
+                    winner.Place,
+                    GetPlaceTitle(winner.Place),
+                    winner.DisplayNo,
+                    winner.Topic,
+                    winner.Author,
+                    winner.TotalScore,
+                    winner.AverageScore,
+                    winner.VotesCount
+                );
+
+                if (ok)
+                    successCount++;
+            }
+
+            if (originalityAward != null)
+            {
+                var ok = await ContestService.PublishWinnerToHallOfFameAsync(
+                    contest.Id,
+                    0,
+                    "За оригинальность",
+                    originalityAward.DisplayNo,
+                    originalityAward.Topic,
+                    originalityAward.Author,
+                    originalityAward.TotalScore,
+                    originalityAward.AverageScore,
+                    originalityAward.VotesCount
+                );
+
+                if (ok)
+                    successCount++;
+            }
+
+            if (successCount > 0)
+            {
+                publishMessage = $"✓ В зал славы добавлено {successCount} записей.";
+                publishSuccess = true;
+            }
+            else
+            {
+                publishMessage = "Не удалось добавить записи в зал славы.";
+                publishSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            publishMessage = $"Ошибка при публикации: {ex.Message}";
+            publishSuccess = false;
+        }
+        finally
+        {
+            isPublishing = false;
+        }
     }
 
     private static List<string> BuildEffectivePraiseLines(List<ResultRow> allRows, string customText)

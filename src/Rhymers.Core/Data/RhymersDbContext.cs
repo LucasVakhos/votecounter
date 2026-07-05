@@ -23,6 +23,7 @@ public sealed class RhymersDbContext : DbContext
     public DbSet<ContestStageTimelineEvent> ContestStageTimelineEvents { get; set; } = null!;
     public DbSet<UserSanctionNotification> UserSanctionNotifications { get; set; } = null!;
     public DbSet<UserSanctionDispatchAudit> UserSanctionDispatchAudits { get; set; } = null!;
+    public DbSet<HallOfFameEntry> HallOfFameEntries { get; set; } = null!;
     public DbSet<VoterSetting> Voters { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -189,6 +190,26 @@ public sealed class RhymersDbContext : DbContext
         {
             entity.HasKey(v => v.Name);
             entity.Property(v => v.Name).HasMaxLength(256);
+        });
+
+        // HallOfFameEntry конфигурация
+        modelBuilder.Entity<HallOfFameEntry>(entity =>
+        {
+            entity.ToTable("HallOfFameEntries");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.ContestId).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.ContestNumber).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.ContestName).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.PlaceTitle).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.Topic).HasMaxLength(512).IsRequired();
+            entity.Property(e => e.Author).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.AuthorPhotoUrl).HasMaxLength(512);
+            entity.Property(e => e.Description).HasMaxLength(1024);
+            entity.Property(e => e.AddedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasIndex(e => e.ContestId);
+            entity.HasIndex(e => e.AddedAt);
+            entity.HasIndex(e => new { e.ContestDate, e.Place });
         });
     }
 }

@@ -1,0 +1,116 @@
+@page "/hall-of-fame"
+@using Rhymers.Core.Models
+@using Rhymers.Web.Services
+@inject ContestService ContestService
+@inject AuthorizationWebService AuthService
+
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-lg-10 offset-lg-1">
+            <h1 class="mb-2">🏆 Зал славы</h1>
+            <p class="text-muted mb-4">Архив всех победителей прошлых конкурсов — лучшие работы и авторы.</p>
+
+            @if (isLoading)
+            {
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Загрузка...</span>
+                </div>
+            }
+            else if (entries.Count == 0)
+            {
+                <div class="alert alert-info">
+                    <strong>Зал славы пуст.</strong>
+                    <p class="mb-0 mt-2">Первые победители конкурсов будут добавлены сюда по мере завершения конкурсов.</p>
+                </div>
+            }
+            else
+            {
+                <div class="card mb-3 border-secondary">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>Всего записей в зале славы</h5>
+                                <p class="text-muted">@entries.Count</p>
+                            </div>
+                            <div class="col-md-6">
+                                <h5>Уникальных конкурсов</h5>
+                                <p class="text-muted">@entries.Select(e => e.ContestId).Distinct().Count()</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @if (entries.Count > 0)
+                {
+                    var groupedByContest = entries
+                        .OrderByDescending(e => e.ContestDate)
+                        .GroupBy(e => new { e.ContestId, e.ContestNumber, e.ContestName, e.ContestDate })
+                        .ToList();
+
+                    @foreach (var contestGroup in groupedByContest)
+                    {
+                        <div class="card mb-4 shadow-sm border-top border-success">
+                            <div class="card-header bg-light">
+                                <h5 class="mb-0">
+                                    <strong>@contestGroup.Key.ContestName</strong>
+                                    <small class="text-muted ms-2">№@contestGroup.Key.ContestNumber</small>
+                                </h5>
+                                <small class="text-muted">@contestGroup.Key.ContestDate.ToString("dd.MM.yyyy")</small>
+                            </div>
+                            <div class="card-body">
+                                @foreach (var entry in contestGroup.OrderBy(e => e.Place))
+                                {
+                                    var badgeClass = entry.Place switch
+                                    {
+                                        1 => "text-bg-warning",
+                                        2 => "text-bg-secondary",
+                                        3 => "text-bg-danger",
+                                        0 => "text-bg-info",
+                                        _ => "text-bg-light text-dark"
+                                    };
+
+                                    <div class="row align-items-center mb-3 pb-3 border-bottom">
+                                        <div class="col-md-1">
+                                            <span class="badge @badgeClass" style="font-size: 0.9rem;">@entry.PlaceTitle</span>
+                                        </div>
+                                        <div class="col-md-7">
+                                            <h6 class="mb-1">@entry.Topic</h6>
+                                            <div class="text-muted small">
+                                                <strong>Автор:</strong> @entry.Author
+                                                <br />
+                                                @if (entry.VotesCount > 0)
+                                                {
+                                                    <span>Голосов: @entry.VotesCount | Средний: @entry.AverageScore.ToString("0.00")</span>
+                                                }
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4 text-end">
+                                            @if (!string.IsNullOrWhiteSpace(entry.Description))
+                                            {
+                                                <small class="text-muted d-block">@entry.Description</small>
+                                            }
+                                            <small class="text-muted">
+                                                Добавлено: @entry.AddedAt.ToString("dd.MM.yyyy HH:mm")
+                                            </small>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<HallOfFameEntry> entries = new();
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        entries = await ContestService.GetHallOfFameEntriesAsync(skip: 0, take: 500);
+        isLoading = false;
+    }
+}
