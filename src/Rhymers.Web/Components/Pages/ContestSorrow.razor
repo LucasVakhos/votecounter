@@ -35,6 +35,39 @@
                 return;
             }
 
+            @if (userViolationStats?.IsSanctioned ?? false)
+            {
+                <div class="alert alert-warning" role="alert">
+                    <strong>⚠️ Вы временно ограничены в доступе к чату</strong><br>
+                    @if (userViolationStats.CurrentSanction == SanctionType.OneDay)
+                    {
+                        <span>Санкция на 1 день</span>
+                    }
+                    else if (userViolationStats.CurrentSanction == SanctionType.OneWeek)
+                    {
+                        <span>Санкция на 7 дней</span>
+                    }
+                    else if (userViolationStats.CurrentSanction == SanctionType.OneMonth)
+                    {
+                        <span>Санкция на 30 дней</span>
+                    }
+                    else if (userViolationStats.CurrentSanction == SanctionType.Permanent)
+                    {
+                        <span>Постоянная блокировка</span>
+                    }
+                    <br>
+                    @if (!string.IsNullOrEmpty(userViolationStats.SanctionTimeRemaining))
+                    {
+                        <small>Осталось: @userViolationStats.SanctionTimeRemaining</small>
+                    }
+                    @if (!string.IsNullOrEmpty(userViolationStats.SanctionReason))
+                    {
+                        <br><small>Причина: @userViolationStats.SanctionReason</small>
+                    }
+                </div>
+                return;
+            }
+
             @if (userViolationStats?.IsBlocked ?? false)
             {
                 <div class="alert alert-danger" role="alert">
@@ -211,6 +244,34 @@
                                     <div class="mb-3">
                                         <textarea class="form-control form-control-sm" placeholder="Комментарий модератора (опционально)" rows="2" @onchange="e => violationDetails[msg.Id] = e.Value?.ToString() ?? string.Empty"></textarea>
                                     </div>
+
+                                    @if (currentUser?.Role >= UserRole.Admin)
+                                    {
+                                        <hr>
+                                        <h6 style="color: #dc3545;">⚖️ Санкция (только администраторы):</h6>
+                                        <div class="mb-3">
+                                            <div class="btn-group w-100" role="group">
+                                                <input type="radio" class="btn-check" name="sanction_@msg.Id" id="sanction_none_@msg.Id" autocomplete="off" @onchange="e => selectedSanction[msg.Id] = SanctionType.None" />
+                                                <label class="btn btn-outline-secondary btn-sm" for="sanction_none_@msg.Id">Нет</label>
+
+                                                <input type="radio" class="btn-check" name="sanction_@msg.Id" id="sanction_1day_@msg.Id" autocomplete="off" @onchange="e => selectedSanction[msg.Id] = SanctionType.OneDay" />
+                                                <label class="btn btn-outline-warning btn-sm" for="sanction_1day_@msg.Id">1 день</label>
+
+                                                <input type="radio" class="btn-check" name="sanction_@msg.Id" id="sanction_1week_@msg.Id" autocomplete="off" @onchange="e => selectedSanction[msg.Id] = SanctionType.OneWeek" />
+                                                <label class="btn btn-outline-warning btn-sm" for="sanction_1week_@msg.Id">7 дней</label>
+
+                                                <input type="radio" class="btn-check" name="sanction_@msg.Id" id="sanction_1month_@msg.Id" autocomplete="off" @onchange="e => selectedSanction[msg.Id] = SanctionType.OneMonth" />
+                                                <label class="btn btn-outline-danger btn-sm" for="sanction_1month_@msg.Id">30 дней</label>
+
+                                                <input type="radio" class="btn-check" name="sanction_@msg.Id" id="sanction_perm_@msg.Id" autocomplete="off" @onchange="e => selectedSanction[msg.Id] = SanctionType.Permanent" />
+                                                <label class="btn btn-outline-danger btn-sm" for="sanction_perm_@msg.Id">♾️ Навсегда</label>
+                                            </div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <textarea class="form-control form-control-sm" placeholder="Причина санкции (опционально)" rows="2" @onchange="e => sanctionReasons[msg.Id] = e.Value?.ToString() ?? string.Empty"></textarea>
+                                        </div>
+                                    }
+
                                     <div>
                                         <button class="btn btn-sm btn-danger" @onclick="async () => await MarkAsViolationAsync(msg.Id)" disabled="@markingAsViolation.GetValueOrDefault(msg.Id)">
                                             @if (markingAsViolation.GetValueOrDefault(msg.Id))
@@ -429,6 +490,11 @@
     private Dictionary<string, ViolationType> selectedViolationType = new();
     private Dictionary<string, string> violationDetails = new();
     private Dictionary<string, bool> markingAsViolation = new();
+    
+    // Sanction system state
+    private Dictionary<string, SanctionType> selectedSanction = new();
+    private Dictionary<string, string> sanctionReasons = new();
+    private Dictionary<string, bool> applyingSanction = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -706,17 +772,31 @@
             var violationType = selectedViolationType[messageId];
             var details = violationDetails.GetValueOrDefault(messageId, "");
 
-            await SorrowService.MarkAsViolationAsync(contestId, messageId, currentUser.DisplayName, violationType, details);
+            var violation = await SorrowService.MarkAsViolationAsync(contestId, messageId, currentUser.DisplayName, violationType, details);
 
-            message = "✅ Нарушение зафиксировано и учтено в профиле пользователя";
+            // Если администратор выбрал санкцию, применяем её
+            if (currentUser.Role >= UserRole.Admin && selectedSanction.TryGetValue(messageId, out var sanctionType) && sanctionType != SanctionType.None)
+            {
+                var sanctionReason = sanctionReasons.GetValueOrDefault(messageId, "");
+                await SorrowService.ApplySanctionAsync(violation.Id, sanctionType, currentUser.DisplayName, sanctionReason);
+                message = $"✅ Нарушение зафиксировано. Санкция применена: {GetSanctionDisplay(sanctionType)}";
+            }
+            else
+            {
+                message = "✅ Нарушение зафиксировано и учтено в профиле пользователя";
+            }
+            
             isSuccess = true;
             
             expandedViolationMessageId = null;
             selectedViolationType.Remove(messageId);
             violationDetails.Remove(messageId);
+            selectedSanction.Remove(messageId);
+            sanctionReasons.Remove(messageId);
 
-            // Перезагрузим сообщения
+            // Перезагрузим сообщения и статистику
             await LoadMessagesAsync(contestId);
+            await LoadUserViolationStatsAsync(contestId);
             
             await Task.Delay(3000);
             message = "";
@@ -731,6 +811,15 @@
             markingAsViolation[messageId] = false;
         }
     }
+
+    private string GetSanctionDisplay(SanctionType type) => type switch
+    {
+        SanctionType.OneDay => "⏰ На 1 день",
+        SanctionType.OneWeek => "📅 На 7 дней",
+        SanctionType.OneMonth => "🗓️ На 30 дней",
+        SanctionType.Permanent => "♾️ Постоянно",
+        _ => "Нет"
+    };
 
     private async Task LoadUserViolationStatsAsync(string contestId)
     {

@@ -132,6 +132,33 @@ public class SorrowChatWebService
         var violation = await _sorrowService.ClearViolationAsync(violationId, moderatorName);
         return await Task.FromResult(violation);
     }
+
+    /// <summary>
+    /// Применить санкцию на пользователя (только администраторы)
+    /// </summary>
+    public async Task<UserViolation> ApplySanctionAsync(string violationId, SanctionType sanctionType, string adminName, string? reason = null)
+    {
+        var violation = await _sorrowService.ApplySanctionAsync(violationId, sanctionType, adminName, reason);
+        return await Task.FromResult(violation);
+    }
+
+    /// <summary>
+    /// Снять санкцию с пользователя (только администраторы)
+    /// </summary>
+    public async Task<UserViolation> RemoveSanctionAsync(string violationId, string adminName)
+    {
+        var violation = await _sorrowService.RemoveSanctionAsync(violationId, adminName);
+        return await Task.FromResult(violation);
+    }
+
+    /// <summary>
+    /// Получить активную санкцию пользователя
+    /// </summary>
+    public async Task<UserViolation?> GetActiveSanctionAsync(string contestId, string userName)
+    {
+        var sanction = await _sorrowService.GetActiveSanctionAsync(contestId, userName);
+        return await Task.FromResult(sanction);
+    }
 }
 
 /// <summary>

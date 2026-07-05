@@ -428,7 +428,12 @@ public sealed class PersistenceService
                 CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 IsCleared INTEGER NOT NULL DEFAULT 0,
                 ClearedAt TEXT,
-                ClearedByModerator TEXT
+                ClearedByModerator TEXT,
+                Sanction INTEGER NOT NULL DEFAULT 0,
+                SanctionAdminName TEXT,
+                SanctionAppliedAt TEXT,
+                SanctionExpiredAt TEXT,
+                SanctionReason TEXT
             );");
 
         await _context.Database.ExecuteSqlRawAsync(@"

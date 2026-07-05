@@ -191,6 +191,22 @@ public sealed class SorrowChatService
             .GroupBy(v => v.Type)
             .ToDictionary(g => g.Key, g => g.Count());
 
+        // Проверяем активную санкцию
+        var activeSanction = await GetActiveSanctionAsync(contestId, userName);
+        var isSanctioned = activeSanction != null;
+        string? sanctionTimeRemaining = null;
+
+        if (isSanctioned && activeSanction.SanctionExpiredAt.HasValue)
+        {
+            var remaining = activeSanction.SanctionExpiredAt.Value - DateTime.UtcNow;
+            if (remaining.TotalDays >= 1)
+                sanctionTimeRemaining = $"{(int)remaining.TotalDays}д {remaining.Hours}ч";
+            else if (remaining.TotalHours >= 1)
+                sanctionTimeRemaining = $"{(int)remaining.TotalHours}ч {remaining.Minutes}м";
+            else
+                sanctionTimeRemaining = $"{(int)remaining.TotalMinutes}м";
+        }
+
         return new UserViolationStats
         {
             UserName = userName,
@@ -201,7 +217,12 @@ public sealed class SorrowChatService
             BlockReason = activeViolations >= MaxViolationsBeforeBlock 
                 ? $"⛔ Пользователь заблокирован на этапе модерации. Нарушений: {activeViolations}/3"
                 : null,
-            ViolationsByType = violationsByType
+            ViolationsByType = violationsByType,
+            CurrentSanction = activeSanction?.Sanction ?? SanctionType.None,
+            SanctionExpiredAt = activeSanction?.SanctionExpiredAt,
+            IsSanctioned = isSanctioned,
+            SanctionReason = activeSanction?.SanctionReason,
+            SanctionTimeRemaining = sanctionTimeRemaining
         };
     }
 
@@ -236,6 +257,79 @@ public sealed class SorrowChatService
         _context.UserViolations.Update(violation);
         await _context.SaveChangesAsync();
         return violation;
+    }
+
+    /// <summary>
+    /// Применить санкцию на пользователя (только администраторы)
+    /// </summary>
+    public async Task<UserViolation> ApplySanctionAsync(string violationId, SanctionType sanctionType, string adminName, string? reason = null)
+    {
+        var violation = await _context.UserViolations.FindAsync(violationId);
+        if (violation == null)
+            throw new InvalidOperationException($"Violation {violationId} not found");
+
+        violation.Sanction = sanctionType;
+        violation.SanctionAdminName = adminName;
+        violation.SanctionAppliedAt = DateTime.UtcNow;
+        violation.SanctionReason = reason;
+
+        // Вычисляем дату окончания санкции
+        violation.SanctionExpiredAt = sanctionType switch
+        {
+            SanctionType.OneDay => DateTime.UtcNow.AddDays(1),
+            SanctionType.OneWeek => DateTime.UtcNow.AddDays(7),
+            SanctionType.OneMonth => DateTime.UtcNow.AddDays(30),
+            SanctionType.Permanent => null, // Никогда не заканчивается
+            _ => null
+        };
+
+        _context.UserViolations.Update(violation);
+        await _context.SaveChangesAsync();
+        return violation;
+    }
+
+    /// <summary>
+    /// Снять санкцию с пользователя (только администраторы)
+    /// </summary>
+    public async Task<UserViolation> RemoveSanctionAsync(string violationId, string adminName)
+    {
+        var violation = await _context.UserViolations.FindAsync(violationId);
+        if (violation == null)
+            throw new InvalidOperationException($"Violation {violationId} not found");
+
+        violation.Sanction = SanctionType.None;
+        violation.SanctionExpiredAt = null;
+
+        _context.UserViolations.Update(violation);
+        await _context.SaveChangesAsync();
+        return violation;
+    }
+
+    /// <summary>
+    /// Получить активную санкцию пользователя
+    /// </summary>
+    public async Task<UserViolation?> GetActiveSanctionAsync(string contestId, string userName)
+    {
+        var sanction = await _context.UserViolations
+            .Where(v => v.ContestId == contestId && v.UserName == userName && v.Sanction != SanctionType.None)
+            .OrderByDescending(v => v.SanctionAppliedAt)
+            .FirstOrDefaultAsync();
+
+        if (sanction == null)
+            return null;
+
+        // Проверяем, не закончилась ли временная санкция
+        if (sanction.SanctionExpiredAt.HasValue && DateTime.UtcNow > sanction.SanctionExpiredAt)
+        {
+            // Санкция истекла, удаляем её
+            sanction.Sanction = SanctionType.None;
+            sanction.SanctionExpiredAt = null;
+            _context.UserViolations.Update(sanction);
+            await _context.SaveChangesAsync();
+            return null;
+        }
+
+        return sanction;
     }
 }
 

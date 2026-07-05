@@ -19,6 +19,28 @@ public enum ViolationType
 }
 
 /// <summary>
+/// Типы санкций (ограничение доступа к чатам)
+/// Решение принимает администрация
+/// </summary>
+public enum SanctionType
+{
+    /// <summary>Без санкции</summary>
+    None = 0,
+
+    /// <summary>Ограничение на 1 день</summary>
+    OneDay = 1,
+
+    /// <summary>Ограничение на 7 дней</summary>
+    OneWeek = 2,
+
+    /// <summary>Ограничение на 30 дней</summary>
+    OneMonth = 3,
+
+    /// <summary>Полная блокировка (навсегда)</summary>
+    Permanent = 4
+}
+
+/// <summary>
 /// Запись о нарушении пользователя (хамство, грубость в чате)
 /// </summary>
 public sealed class UserViolation
@@ -55,10 +77,25 @@ public sealed class UserViolation
 
     /// <summary>Имя модератора, снявшего предупреждение</summary>
     public string? ClearedByModerator { get; set; }
+
+    /// <summary>Тип санкции (ограничение доступа)</summary>
+    public SanctionType Sanction { get; set; } = SanctionType.None;
+
+    /// <summary>Имя администратора, назначившего санкцию</summary>
+    public string? SanctionAdminName { get; set; }
+
+    /// <summary>Дата назначения санкции</summary>
+    public DateTime? SanctionAppliedAt { get; set; }
+
+    /// <summary>Дата окончания санкции (для временных санкций)</summary>
+    public DateTime? SanctionExpiredAt { get; set; }
+
+    /// <summary>Причина санкции (комментарий админа)</summary>
+    public string? SanctionReason { get; set; }
 }
 
 /// <summary>
-/// Статистика нарушений пользователя
+/// Статистика нарушений и санкций пользователя
 /// </summary>
 public class UserViolationStats
 {
@@ -69,4 +106,11 @@ public class UserViolationStats
     public bool IsBlocked { get; set; }
     public string? BlockReason { get; set; }
     public Dictionary<ViolationType, int> ViolationsByType { get; set; } = new();
+    
+    // Санкции
+    public SanctionType CurrentSanction { get; set; } = SanctionType.None;
+    public DateTime? SanctionExpiredAt { get; set; }
+    public bool IsSanctioned { get; set; }
+    public string? SanctionReason { get; set; }
+    public string? SanctionTimeRemaining { get; set; }
 }
