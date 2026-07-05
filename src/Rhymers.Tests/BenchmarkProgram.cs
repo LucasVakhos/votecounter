@@ -1,11 +1,18 @@
 using BenchmarkDotNet.Running;
 using Rhymers.Tests;
 
-// Run performance benchmarks
-var summary = BenchmarkRunner.Run(new[]
+namespace Rhymers.Tests;
+
+public static class BenchmarkProgram
 {
-    typeof(NameNormalizerBenchmarks),
-    typeof(VoteParserBenchmarks),
-    typeof(VoteRuleServiceBenchmarks),
-    typeof(ContestResultsServiceBenchmarks)
-});
+    public static void RunAll()
+    {
+        BenchmarkRunner.Run(new[]
+        {
+            typeof(NameNormalizerBenchmarks),
+            typeof(VoteParserBenchmarks),
+            typeof(VoteRuleServiceBenchmarks),
+            typeof(ContestResultsServiceBenchmarks)
+        });
+    }
+}

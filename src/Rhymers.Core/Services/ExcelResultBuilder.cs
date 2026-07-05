@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using Rhymers.Core.Models;
 
 namespace Rhymers.Core.Services;
@@ -21,8 +22,12 @@ public sealed partial class ExcelResultBuilder
     private const int XlTop = -4160;
 
 
+    [SupportedOSPlatform("windows")]
     public string BuildAndOpen(string templatePath, string outputFolder, Contest contest, IReadOnlyCollection<VoteEntry> votes)
     {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("Генерация Excel через COM поддерживается только на Windows.");
+
         if (string.IsNullOrWhiteSpace(templatePath) || !File.Exists(templatePath))
             throw new FileNotFoundException("Файл-образец не найден.", templatePath);
 
@@ -827,6 +832,9 @@ public sealed partial class ExcelResultBuilder
     private static void ReleaseComObject(object? value)
     {
         if (value is null)
+            return;
+
+        if (!OperatingSystem.IsWindows())
             return;
 
         try
