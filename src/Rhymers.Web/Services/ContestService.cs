@@ -274,6 +274,9 @@ public class ContestService
         var suspects = new List<UnfairVotingSuspect>();
         foreach (var voterGroup in votes.GroupBy(v => v.VoterUserId))
         {
+            if (voterGroup.Key.StartsWith("system:", StringComparison.OrdinalIgnoreCase))
+                continue;
+
             var voterVotes = voterGroup.ToList();
             if (voterVotes.Count < 5)
                 continue;
