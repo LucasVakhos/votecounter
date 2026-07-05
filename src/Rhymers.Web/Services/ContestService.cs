@@ -22,6 +22,7 @@ public class ContestService
     /// </summary>
     public async Task<IEnumerable<Contest>> GetContestsAsync()
     {
+        await ApplyAutomaticStageSwitchesAsync();
         var contests = await _context.Contests.OrderByDescending(c => c.CreatedAt).ToListAsync();
         return contests;
     }
@@ -73,6 +74,103 @@ public class ContestService
         contest.MaxTopicsCount = Math.Max(0, maxTopicsCount);
         contest.UpdatedAt = DateTime.Now;
         await _context.SaveChangesAsync();
+    }
+
+    public async Task<bool> SetContestStageAsync(string contestId, ContestStage stage)
+    {
+        var contest = await _context.Contests.FirstOrDefaultAsync(c => c.Id == contestId);
+        if (contest == null)
+            return false;
+
+        contest.Stage = (int)stage;
+        contest.StageUpdatedAt = DateTime.Now;
+        contest.UpdatedAt = DateTime.Now;
+
+        if (stage == ContestStage.Finished)
+        {
+            contest.IsActive = false;
+            contest.ClosedAt ??= DateTime.Now;
+        }
+
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> SaveStageAutomationSettingsAsync(
+        string contestId,
+        bool autoStageSwitchEnabled,
+        DateTime? topicReceptionEndsAt,
+        DateTime? workReceptionEndsAt,
+        DateTime? votingOpenEndsAt,
+        DateTime? votingClosedEndsAt)
+    {
+        var contest = await _context.Contests.FirstOrDefaultAsync(c => c.Id == contestId);
+        if (contest == null)
+            return false;
+
+        contest.AutoStageSwitchEnabled = autoStageSwitchEnabled;
+        contest.TopicReceptionEndsAt = topicReceptionEndsAt;
+        contest.WorkReceptionEndsAt = workReceptionEndsAt;
+        contest.VotingOpenEndsAt = votingOpenEndsAt;
+        contest.VotingClosedEndsAt = votingClosedEndsAt;
+        contest.UpdatedAt = DateTime.Now;
+
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<int> ApplyAutomaticStageSwitchesAsync()
+    {
+        var now = DateTime.Now;
+        var contests = await _context.Contests
+            .Where(c => c.AutoStageSwitchEnabled)
+            .Where(c => c.Stage != (int)ContestStage.Finished)
+            .ToListAsync();
+
+        var changed = 0;
+        foreach (var contest in contests)
+        {
+            var next = GetAutoStageForMoment(contest, now);
+            if (next == GetContestStage(contest))
+                continue;
+
+            contest.Stage = (int)next;
+            contest.StageUpdatedAt = now;
+            contest.UpdatedAt = now;
+            if (next == ContestStage.Finished)
+            {
+                contest.IsActive = false;
+                contest.ClosedAt ??= now;
+            }
+
+            changed++;
+        }
+
+        if (changed > 0)
+            await _context.SaveChangesAsync();
+
+        return changed;
+    }
+
+    public static ContestStage GetContestStage(Contest contest)
+    {
+        var stage = contest.Stage;
+        return Enum.IsDefined(typeof(ContestStage), stage)
+            ? (ContestStage)stage
+            : ContestStage.TopicReception;
+    }
+
+    public static string GetContestStageTitle(ContestStage stage)
+    {
+        return stage switch
+        {
+            ContestStage.TopicReception => "Прием тем",
+            ContestStage.WorkReception => "Прием работ",
+            ContestStage.VotingOpen => "Голосование открыто",
+            ContestStage.VotingClosed => "Голосование закрыто",
+            ContestStage.Finished => "Конкурс завершен",
+            _ => "Неизвестно"
+        };
     }
 
     public async Task<List<TopicKind>> GetTopicKindsAsync()
@@ -358,6 +456,32 @@ public class ContestService
             return 0;
 
         return int.TryParse(number, out var parsed) ? parsed : 0;
+    }
+
+    private static ContestStage GetAutoStageForMoment(Contest contest, DateTime now)
+    {
+        var stage = GetContestStage(contest);
+
+        while (true)
+        {
+            var next = stage switch
+            {
+                ContestStage.TopicReception when contest.TopicReceptionEndsAt.HasValue && now >= contest.TopicReceptionEndsAt.Value
+                    => ContestStage.WorkReception,
+                ContestStage.WorkReception when contest.WorkReceptionEndsAt.HasValue && now >= contest.WorkReceptionEndsAt.Value
+                    => ContestStage.VotingOpen,
+                ContestStage.VotingOpen when contest.VotingOpenEndsAt.HasValue && now >= contest.VotingOpenEndsAt.Value
+                    => ContestStage.VotingClosed,
+                ContestStage.VotingClosed when contest.VotingClosedEndsAt.HasValue && now >= contest.VotingClosedEndsAt.Value
+                    => ContestStage.Finished,
+                _ => stage
+            };
+
+            if (next == stage)
+                return stage;
+
+            stage = next;
+        }
     }
 
     private static string NormalizeKindName(string? value)

@@ -40,6 +40,15 @@ public sealed class Contest
     // 0 = без ограничения, >0 = максимальное количество тем в конкурсе.
     public int MaxTopicsCount { get; set; } = 0;
 
+    // true = стадии переключаются автоматически по расписанию.
+    public bool AutoStageSwitchEnabled { get; set; }
+
+    // Моменты завершения стадий.
+    public DateTime? TopicReceptionEndsAt { get; set; }
+    public DateTime? WorkReceptionEndsAt { get; set; }
+    public DateTime? VotingOpenEndsAt { get; set; }
+    public DateTime? VotingClosedEndsAt { get; set; }
+
     public List<ContestTopic> Topics { get; set; } = new();
     public List<ContestWork> Works { get; set; } = new();
     public List<VoterSetting> Voters { get; set; } = new();

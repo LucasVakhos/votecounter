@@ -86,6 +86,55 @@
         </div>
 
         <div class="card mb-3">
+            <div class="card-header">Стадии конкурса</div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <strong>Текущая стадия:</strong>
+                    <span class="badge text-bg-primary ms-2">@ContestService.GetContestStageTitle(ContestService.GetContestStage(selectedContest))</span>
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-md-8">
+                        <label class="form-label">Ручное переключение модератором</label>
+                        <select class="form-select" @bind="manualStage">
+                            @foreach (var stage in Enum.GetValues<ContestStage>())
+                            {
+                                <option value="@stage">@ContestService.GetContestStageTitle(stage)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button class="btn btn-outline-primary w-100" @onclick="ApplyManualStageAsync">Переключить стадию</button>
+                    </div>
+                </div>
+
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" @bind="autoStageSwitchEnabled" id="autoStageSwitch" />
+                    <label class="form-check-label" for="autoStageSwitch">Автоматическое переключение по времени</label>
+                </div>
+
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label">До окончания приема тем</label>
+                        <InputDate class="form-control" @bind-Value="topicReceptionEndsAt" Type="InputDateType.DateTimeLocal" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">До окончания приема работ</label>
+                        <InputDate class="form-control" @bind-Value="workReceptionEndsAt" Type="InputDateType.DateTimeLocal" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">До окончания открытого голосования</label>
+                        <InputDate class="form-control" @bind-Value="votingOpenEndsAt" Type="InputDateType.DateTimeLocal" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">До закрытия итоговой стадии</label>
+                        <InputDate class="form-control" @bind-Value="votingClosedEndsAt" Type="InputDateType.DateTimeLocal" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
             <div class="card-header">Объявление о приёме тем</div>
             <div class="card-body">
                 <textarea class="form-control" rows="5" @bind="announcementText"
@@ -192,6 +241,12 @@
     private string newTopicKindName = string.Empty;
     private int? editingKindId;
     private string editingKindName = string.Empty;
+    private ContestStage manualStage = ContestStage.TopicReception;
+    private bool autoStageSwitchEnabled;
+    private DateTime? topicReceptionEndsAt;
+    private DateTime? workReceptionEndsAt;
+    private DateTime? votingOpenEndsAt;
+    private DateTime? votingClosedEndsAt;
 
     private List<ContestTopic> topics = new();
     private string message = string.Empty;
@@ -221,6 +276,12 @@
 
         selectedContest = await ContestService.GetContestAsync(selectedContestId);
         maxTopicsCount = selectedContest?.MaxTopicsCount ?? 0;
+        manualStage = selectedContest == null ? ContestStage.TopicReception : ContestService.GetContestStage(selectedContest);
+        autoStageSwitchEnabled = selectedContest?.AutoStageSwitchEnabled ?? false;
+        topicReceptionEndsAt = selectedContest?.TopicReceptionEndsAt;
+        workReceptionEndsAt = selectedContest?.WorkReceptionEndsAt;
+        votingOpenEndsAt = selectedContest?.VotingOpenEndsAt;
+        votingClosedEndsAt = selectedContest?.VotingClosedEndsAt;
         announcementText = BuildAnnouncement(selectedContest);
         await ReloadTopicKindsAsync();
         await ReloadTopicsAsync();
@@ -337,6 +398,13 @@
         var regularTopics = ParseLines(regularTopicsText);
 
         await ContestService.SaveMaxTopicsCountAsync(selectedContestId, maxTopicsCount);
+        await ContestService.SaveStageAutomationSettingsAsync(
+            selectedContestId,
+            autoStageSwitchEnabled,
+            topicReceptionEndsAt,
+            workReceptionEndsAt,
+            votingOpenEndsAt,
+            votingClosedEndsAt);
 
         var proposedBy = string.IsNullOrWhiteSpace(currentUser?.DisplayName)
             ? currentUser?.Username ?? "system"
@@ -353,6 +421,24 @@
         await ReloadTopicsAsync();
 
         message = $"Сохранено. Объявление подготовлено. Добавлено тем победителей: {addedWinner}, обычных тем: {addedRegular}, пропущено: {skipped}.";
+        isSuccess = true;
+    }
+
+    private async Task ApplyManualStageAsync()
+    {
+        if (string.IsNullOrWhiteSpace(selectedContestId))
+            return;
+
+        var changed = await ContestService.SetContestStageAsync(selectedContestId, manualStage);
+        if (!changed)
+        {
+            message = "Не удалось переключить стадию конкурса.";
+            isSuccess = false;
+            return;
+        }
+
+        selectedContest = await ContestService.GetContestAsync(selectedContestId);
+        message = $"Стадия изменена: {ContestService.GetContestStageTitle(manualStage)}.";
         isSuccess = true;
     }
 

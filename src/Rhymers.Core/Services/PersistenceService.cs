@@ -233,6 +233,11 @@ public sealed class PersistenceService
     private async Task EnsureSchemaExtensionsAsync()
     {
         await EnsureColumnAsync("Contests", "MaxTopicsCount", "INTEGER NOT NULL DEFAULT 0");
+        await EnsureColumnAsync("Contests", "AutoStageSwitchEnabled", "INTEGER NOT NULL DEFAULT 0");
+        await EnsureColumnAsync("Contests", "TopicReceptionEndsAt", "TEXT NULL");
+        await EnsureColumnAsync("Contests", "WorkReceptionEndsAt", "TEXT NULL");
+        await EnsureColumnAsync("Contests", "VotingOpenEndsAt", "TEXT NULL");
+        await EnsureColumnAsync("Contests", "VotingClosedEndsAt", "TEXT NULL");
 
         await _context.Database.ExecuteSqlRawAsync(@"
             CREATE TABLE IF NOT EXISTS ContestTopics(

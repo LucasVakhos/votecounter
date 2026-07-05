@@ -28,6 +28,7 @@ builder.Services.AddScoped<ContestService>();
 builder.Services.AddScoped<VoteService>();
 builder.Services.AddScoped<ModerationWebService>();
 builder.Services.AddScoped<AuthorizationWebService>();
+builder.Services.AddHostedService<ContestStageAutomationHostedService>();
 
 var app = builder.Build();
 
