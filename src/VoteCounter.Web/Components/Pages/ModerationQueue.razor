@@ -1,9 +1,29 @@
 @page "/moderation-queue"
 @using VoteCounter.Web.Services
+@using VoteCounter.Core.Models
 @inject ModerationWebService ModerationService
+@inject AuthorizationWebService AuthService
 
 <div class="container mt-4">
     <h1>🔍 Очередь на модерацию</h1>
+    
+    @if (currentUser == null)
+    {
+        <div class="alert alert-warning" role="alert">
+            <strong>⚠️ Требуется вход!</strong> Для модерации работ нужно 
+            <a href="/auth/login" class="alert-link">войти в систему</a> с ролью "Модератор" или "Администратор".
+        </div>
+        return;
+    }
+
+    @if (currentUser.Role < UserRole.Moderator)
+    {
+        <div class="alert alert-danger" role="alert">
+            <strong>❌ Доступ запрещён!</strong> Только модераторы и администраторы могут проверять работы. 
+            Ваша роль: <strong>@GetRoleDisplay(currentUser.Role)</strong>
+        </div>
+        return;
+    }
     
     <div class="alert alert-warning" role="alert">
         <strong>⚠️ Модератор:</strong> Здесь вы видите работы, отправленные на проверку.
@@ -57,6 +77,38 @@
 
                             @if (submission.Status == WorkStatus.PendingModeration || submission.Status == WorkStatus.UnderReview)
                             {
+                                <!-- Автоматическая проверка контента -->
+                                @if (contentCheckResults.TryGetValue(submission.Id, out var checkResult))
+                                {
+                                    <div class="alert @GetContentCheckAlertClass(checkResult) p-2 mb-2" role="alert">
+                                        <small>
+                                            <strong>@GetContentCheckIcon(checkResult.RiskLevel) Проверка контента (@checkResult.RiskLevel)</strong><br />
+                                            @checkResult.Recommendation<br />
+                                            @if (checkResult.Problems.Count > 0)
+                                            {
+                                                <span>Найдено проблем: @checkResult.Problems.Count</span>
+                                                <ul class="mb-0 mt-1">
+                                                    @foreach (var problem in checkResult.Problems.Take(3))
+                                                    {
+                                                        <li><small>@problem.Category: @problem.Message</small></li>
+                                                    }
+                                                    @if (checkResult.Problems.Count > 3)
+                                                    {
+                                                        <li><small>...и ещё @(checkResult.Problems.Count - 3) проблем</small></li>
+                                                    }
+                                                </ul>
+                                            }
+                                        </small>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-info mb-2" 
+                                           @onclick="() => CheckContentAsync(submission)">
+                                        🔎 Проверить контент
+                                    </button>
+                                }
+
                                 <div class="mb-2">
                                     <textarea @bind="rejectionNotes[submission.Id]" 
                                              class="form-control form-control-sm" rows="2" 
@@ -66,7 +118,7 @@
                                 <div class="btn-group btn-group-sm" role="group">
                                     <button type="button" class="btn btn-success" 
                                            @onclick="() => ApproveAsync(submission.Id)">
-                                        ✓ Одобрить
+                                        ✓ Одобрить в конкурс
                                     </button>
                                     <button type="button" class="btn btn-danger" 
                                            @onclick="() => RejectAsync(submission.Id)">
@@ -77,7 +129,7 @@
                             else if (submission.Status == WorkStatus.Approved)
                             {
                                 <div class="alert alert-success mb-0" role="alert">
-                                    ✅ Одобрена @submission.ModeratedAt?.ToString("dd.MM.yyyy HH:mm") 
+                                    ✅ В конкурсе @submission.ModeratedAt?.ToString("dd.MM.yyyy HH:mm") 
                                     <br />Модератор: @submission.ModeratorName
                                 </div>
                             }
@@ -106,17 +158,25 @@
 
 @code {
     private List<WorkSubmission>? submissions;
+    private User? currentUser;
     private string selectedContestId = "";
     private string message = "";
     private bool isSuccess = false;
     private bool isLoading = false;
     private Dictionary<string, string> rejectionNotes = new();
+    private Dictionary<string, ContentModerationResult> contentCheckResults = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+    }
 
     private async Task OnContestSelectedAsync(ChangeEventArgs e)
     {
         selectedContestId = e.Value?.ToString() ?? "";
         if (!string.IsNullOrEmpty(selectedContestId))
         {
+            contentCheckResults.Clear();
             await LoadSubmissionsAsync();
         }
     }
@@ -140,6 +200,20 @@
         }
     }
 
+    private async Task CheckContentAsync(WorkSubmission submission)
+    {
+        try
+        {
+            var result = await ModerationService.CheckContentAsync(submission.Work);
+            contentCheckResults[submission.Id] = result;
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка проверки: {ex.Message}";
+            isSuccess = false;
+        }
+    }
+
     private async Task ApproveAsync(string submissionId)
     {
         try
@@ -151,6 +225,7 @@
             {
                 message = "✅ Работа одобрена и добавлена в конкурс!";
                 isSuccess = true;
+                contentCheckResults.Clear();
                 await LoadSubmissionsAsync();
             }
             else
@@ -185,6 +260,7 @@
                 message = "✅ Работа отклонена и автору отправлено уведомление";
                 isSuccess = true;
                 rejectionNotes.Remove(submissionId);
+                contentCheckResults.Clear();
                 await LoadSubmissionsAsync();
             }
             else
@@ -203,9 +279,34 @@
     private string GetStatusBadge(WorkStatus status) => status switch
     {
         WorkStatus.PendingModeration => "⏳ На модерации",
-        WorkStatus.UnderReview => "👀 На рассмотрении",
-        WorkStatus.Approved => "✅ Одобрена",
+        WorkStatus.UnderReview => "👁️ На проверке",
+        WorkStatus.Approved => "✅ В конкурсе",
         WorkStatus.Rejected => "❌ Отклонена",
         _ => "❓ Неизвестно"
+    };
+
+    private string GetContentCheckAlertClass(ContentModerationResult result) => result.RiskLevel switch
+    {
+        ContentRiskLevel.Low => "alert-success",
+        ContentRiskLevel.Medium => "alert-warning",
+        ContentRiskLevel.High => "alert-danger",
+        _ => "alert-info"
+    };
+
+    private string GetContentCheckIcon(ContentRiskLevel level) => level switch
+    {
+        ContentRiskLevel.Low => "✅",
+        ContentRiskLevel.Medium => "⚠️",
+        ContentRiskLevel.High => "🚫",
+        _ => "❓"
+    };
+
+    private string GetRoleDisplay(UserRole role) => role switch
+    {
+        UserRole.Reader => "👤 Читатель/Оценщик",
+        UserRole.Author => "✍️ Автор",
+        UserRole.Moderator => "🔍 Модератор",
+        UserRole.Admin => "👨‍💼 Администратор",
+        _ => "?"
     };
 }

@@ -1,6 +1,24 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
+﻿@using VoteCounter.Web.Services
+@using VoteCounter.Core.Models
+@inject AuthorizationWebService AuthService
+
+<div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="">VoteCounter</a>
+        <div class="ms-auto">
+            @if (currentUser != null)
+            {
+                <span class="text-light me-3">
+                    <strong>@currentUser.DisplayName</strong> 
+                    <small class="badge @GetRoleBadgeClass(currentUser.Role)">@GetRoleDisplay(currentUser.Role)</small>
+                </span>
+                <button @onclick="LogoutAsync" class="btn btn-sm btn-outline-light">🔒 Выход</button>
+            }
+            else
+            {
+                <a href="auth/login" class="btn btn-sm btn-outline-light">🔐 Вход</a>
+            }
+        </div>
     </div>
 </div>
 
@@ -16,33 +34,94 @@
 
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="contests">
-                <span class="oi oi-list" aria-hidden="true"></span> Конкурсы
+                <span class="oi oi-list" aria-hidden="true"></span> 📺 Конкурсы
             </NavLink>
         </div>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="votes/import">
-                <span class="oi oi-cloud-upload" aria-hidden="true"></span> Импорт голосов
-            </NavLink>
-        </div>
+        @if (currentUser?.Role >= UserRole.Author)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="submit-work/contest-1">
+                    <span class="oi oi-pencil" aria-hidden="true"></span> 📝 Подать работу
+                </NavLink>
+            </div>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="submit-work/contest-1">
-                <span class="oi oi-pencil" aria-hidden="true"></span> 📝 Подать работу
-            </NavLink>
-        </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="my-submissions">
+                    <span class="oi oi-list" aria-hidden="true"></span> 📋 Мои работы
+                </NavLink>
+            </div>
+        }
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="work-status">
-                <span class="oi oi-list" aria-hidden="true"></span> 📋 Мои работы
-            </NavLink>
-        </div>
+        @if (currentUser?.Role >= UserRole.Moderator)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="moderation-queue">
+                    <span class="oi oi-magnifying-glass" aria-hidden="true"></span> 🔍 Модерация
+                </NavLink>
+            </div>
+        }
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="moderation-queue">
-                <span class="oi oi-magnifying-glass" aria-hidden="true"></span> 🔍 Модерация
-            </NavLink>
-        </div>
+        @if (currentUser?.Role == UserRole.Admin)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="admin-panel">
+                    <span class="oi oi-task" aria-hidden="true"></span> 👨‍💼 Админ панель
+                </NavLink>
+            </div>
+        }
+
+        <hr class="my-2" />
+
+        @if (currentUser?.Role >= UserRole.Author)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="profile">
+                    <span class="oi oi-person" aria-hidden="true"></span> 👤 Профиль
+                </NavLink>
+            </div>
+        }
+
+        @if (currentUser?.Role >= UserRole.Reader)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="votes/import">
+                    <span class="oi oi-cloud-upload" aria-hidden="true"></span> 📤 Импорт голосов
+                </NavLink>
+            </div>
+        }
     </nav>
 </div>
 
+@code {
+    private User? currentUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+    }
+
+    private async Task LogoutAsync()
+    {
+        await AuthService.SetCurrentUserAsync(null);
+        currentUser = null;
+    }
+
+    private string GetRoleBadgeClass(UserRole role) => role switch
+    {
+        UserRole.Reader => "bg-info",
+        UserRole.Author => "bg-success",
+        UserRole.Moderator => "bg-warning",
+        UserRole.Admin => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private string GetRoleDisplay(UserRole role) => role switch
+    {
+        UserRole.Reader => "👤 Читатель",
+        UserRole.Author => "✍️ Автор",
+        UserRole.Moderator => "🔍 Модератор",
+        UserRole.Admin => "👨‍💼 Admin",
+        _ => "?"
+    };
+}

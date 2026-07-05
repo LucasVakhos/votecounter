@@ -17,6 +17,7 @@ builder.Services.AddVoteCounterData();
 builder.Services.AddScoped<ContestService>();
 builder.Services.AddScoped<VoteService>();
 builder.Services.AddScoped<ModerationWebService>();
+builder.Services.AddScoped<AuthorizationWebService>();
 
 var app = builder.Build();
 

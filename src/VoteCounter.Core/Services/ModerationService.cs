@@ -153,4 +153,24 @@ public sealed class ModerationService
             .OrderBy(w => w.Number)
             .ToList();
     }
+
+    /// <summary>
+    /// Получить все работы конкретного автора.
+    /// </summary>
+    /// <param name="authorName">Имя автора</param>
+    /// <returns>Все подачи автора со всех конкурсов</returns>
+    public List<WorkSubmission> GetAuthorSubmissions(string authorName)
+    {
+        if (string.IsNullOrEmpty(authorName))
+            return new List<WorkSubmission>();
+
+        var result = new List<WorkSubmission>();
+        
+        foreach (var contestSubmissions in _submissions.Values)
+        {
+            result.AddRange(contestSubmissions.Where(s => s.Work.Author == authorName));
+        }
+
+        return result.OrderByDescending(s => s.SubmittedAt).ToList();
+    }
 }

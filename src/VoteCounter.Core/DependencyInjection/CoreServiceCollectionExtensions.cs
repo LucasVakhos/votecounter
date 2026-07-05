@@ -19,8 +19,12 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<ContestResultsService>();
         services.AddSingleton<VoteAuditService>();
 
-        // Moderation service
+        // Moderation services
         services.AddSingleton<ModerationService>();
+        services.AddSingleton<ContentModerationService>();
+
+        // Authorization and role management
+        services.AddSingleton<RoleAuthorizationService>();
 
         // Text processing services (sealed classes)
         services.AddSingleton<WorkTextImporter>();

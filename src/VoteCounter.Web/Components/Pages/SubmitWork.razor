@@ -1,7 +1,9 @@
 @page "/submit-work"
 @page "/submit-work/{ContestId}"
 @using VoteCounter.Web.Services
+@using VoteCounter.Core.Models
 @inject ModerationWebService ModerationService
+@inject AuthorizationWebService AuthService
 @inject NavigationManager NavigationManager
 
 @{
@@ -13,6 +15,24 @@
     <div class="row justify-content-center">
         <div class="col-lg-8">
             <h1>📝 Подать стихотворение</h1>
+
+            @if (currentUser == null)
+            {
+                <div class="alert alert-warning" role="alert">
+                    <strong>⚠️ Требуется вход!</strong> Для подачи работы нужно 
+                    <a href="/auth/login" class="alert-link">войти в систему</a> с ролью "Автор" или выше.
+                </div>
+                return;
+            }
+
+            @if (currentUser.Role < UserRole.Author)
+            {
+                <div class="alert alert-danger" role="alert">
+                    <strong>❌ Доступ запрещён!</strong> Только авторы (и выше) могут подавать работы. 
+                    Ваша роль: <strong>@GetRoleDisplay(currentUser.Role)</strong>
+                </div>
+                return;
+            }
             
             <div class="alert alert-info" role="alert">
                 <strong>ℹ️ Ваше творчество:</strong> Поделитесь своим стихотворением. После проверки модератором оно будет добавлено в конкурс.
@@ -143,11 +163,17 @@
     public string? ContestId { get; set; }
     
     private ContestWork work = new();
+    private User? currentUser;
     private string message = "";
     private bool isSuccess = false;
     private bool isSubmitting = false;
     private bool isChecking = false;
     private WorkSpellCheckReport? grammarReport = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+    }
 
     private async Task CheckGrammarAsync()
     {
@@ -267,4 +293,13 @@
             isSubmitting = false;
         }
     }
+
+    private string GetRoleDisplay(UserRole role) => role switch
+    {
+        UserRole.Reader => "👤 Читатель/Оценщик",
+        UserRole.Author => "✍️ Автор",
+        UserRole.Moderator => "🔍 Модератор",
+        UserRole.Admin => "👨‍💼 Администратор",
+        _ => "?"
+    };
 }

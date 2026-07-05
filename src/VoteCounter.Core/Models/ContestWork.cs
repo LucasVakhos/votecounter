@@ -10,6 +10,7 @@ public sealed class ContestWork
 {
     public int Number { get; set; }
     public string Title { get; set; } = string.Empty;
+    public string Subtitle { get; set; } = string.Empty;
     public string Author { get; set; } = string.Empty;
     public string Topic { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
@@ -27,6 +28,7 @@ public sealed class ContestWork
         {
             Number = Number,
             Title = Title,
+            Subtitle = Subtitle,
             Author = Author,
             Topic = Topic,
             Content = Content,

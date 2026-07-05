@@ -10,11 +10,13 @@ public class ModerationWebService
 {
     private readonly ModerationService _moderationService;
     private readonly WorkSpellChecker _spellChecker;
+    private readonly ContentModerationService _contentModerator;
 
-    public ModerationWebService(ModerationService moderationService, WorkSpellChecker spellChecker)
+    public ModerationWebService(ModerationService moderationService, WorkSpellChecker spellChecker, ContentModerationService contentModerator)
     {
         _moderationService = moderationService;
         _spellChecker = spellChecker;
+        _contentModerator = contentModerator;
     }
 
     /// <summary>
@@ -78,5 +80,23 @@ public class ModerationWebService
     {
         var report = _spellChecker.CheckWork(work);
         return await Task.FromResult(report);
+    }
+
+    /// <summary>
+    /// Проверить содержимое работы на запрещённый контент
+    /// </summary>
+    public async Task<ContentModerationResult> CheckContentAsync(ContestWork work)
+    {
+        var result = _contentModerator.CheckContent(work.Title, work.Subtitle ?? string.Empty, work.Content ?? string.Empty);
+        return await Task.FromResult(result);
+    }
+
+    /// <summary>
+    /// Получить все работы конкретного автора
+    /// </summary>
+    public async Task<List<WorkSubmission>> GetAuthorSubmissionsAsync(string authorName)
+    {
+        var submissions = _moderationService.GetAuthorSubmissions(authorName);
+        return await Task.FromResult(submissions);
     }
 }

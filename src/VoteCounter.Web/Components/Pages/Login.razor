@@ -1,0 +1,124 @@
+@page "/auth/login"
+@using VoteCounter.Web.Services
+@using VoteCounter.Core.Models
+@inject AuthorizationWebService AuthService
+@inject NavigationManager Navigation
+
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">🔐 Вход в систему</h4>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Имя пользователя</label>
+                        <input type="text" @bind="username" class="form-control" placeholder="Введите имя пользователя">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Роль (для демо)</label>
+                        <select @bind="selectedRole" class="form-select">
+                            <option value="@UserRole.Reader">👤 Читатель/Оценщик</option>
+                            <option value="@UserRole.Author">✍️ Автор</option>
+                            <option value="@UserRole.Moderator">🔍 Модератор</option>
+                            <option value="@UserRole.Admin">👨‍💼 Администратор</option>
+                        </select>
+                    </div>
+
+                    <div class="alert alert-info" role="alert">
+                        <small>
+                            <strong>Демо система:</strong> При входе будет создан/получен пользователь с выбранной ролью.<br/>
+                            В production приложении нужна реальная аутентификация.
+                        </small>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(message))
+                    {
+                        <div class="alert @(isSuccess ? "alert-success" : "alert-danger")" role="alert">
+                            @message
+                        </div>
+                    }
+
+                    <button @onclick="LoginAsync" disabled="@isLoading" class="btn btn-primary w-100">
+                        @if (isLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <span>Вход...</span>
+                        }
+                        else
+                        {
+                            <span>🔓 Войти</span>
+                        }
+                    </button>
+                </div>
+            </div>
+
+            <div class="alert alert-secondary mt-4" role="alert">
+                <h6>Демо учётные записи:</h6>
+                <ul class="mb-0">
+                    <li><strong>reader1</strong> - 👤 Читатель</li>
+                    <li><strong>author1</strong> - ✍️ Автор</li>
+                    <li><strong>moderator1</strong> - 🔍 Модератор</li>
+                    <li><strong>admin1</strong> - 👨‍💼 Администратор</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string username = "author1";
+    private UserRole selectedRole = UserRole.Author;
+    private string message = "";
+    private bool isSuccess = false;
+    private bool isLoading = false;
+
+    private async Task LoginAsync()
+    {
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            message = "❌ Введите имя пользователя";
+            isSuccess = false;
+            return;
+        }
+
+        try
+        {
+            isLoading = true;
+
+            // Получить или создать пользователя
+            var user = await AuthService.GetUserAsync(username);
+            
+            if (user == null)
+            {
+                user = await AuthService.RegisterUserAsync(
+                    username,
+                    $"Пользователь {username}",
+                    $"{username}@example.com",
+                    selectedRole
+                );
+            }
+
+            // Установить текущего пользователя
+            await AuthService.SetCurrentUserAsync(user);
+
+            message = $"✅ Вход выполнен! Добро пожаловать, {user.DisplayName}!";
+            isSuccess = true;
+
+            // Через 2 секунды перенаправить на главную
+            await Task.Delay(2000);
+            Navigation.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка: {ex.Message}";
+            isSuccess = false;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}
