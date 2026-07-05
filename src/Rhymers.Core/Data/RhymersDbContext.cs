@@ -29,6 +29,9 @@ public sealed class RhymersDbContext : DbContext
     public DbSet<WorkReview> WorkReviews { get; set; } = null!;
     public DbSet<ContestSorrowMessage> SorrowMessages { get; set; } = null!;
     public DbSet<UserViolation> UserViolations { get; set; } = null!;
+    public DbSet<AuditLog> AuditLogs { get; set; } = null!;
+    public DbSet<UserNotification> UserNotifications { get; set; } = null!;
+    public DbSet<SanctionAppeal> SanctionAppeals { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

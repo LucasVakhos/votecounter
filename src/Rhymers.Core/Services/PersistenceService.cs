@@ -441,6 +441,45 @@ public sealed class PersistenceService
             INSERT OR IGNORE INTO TopicKinds(Id, Name, SortNo) VALUES(2, 'Картина', 2);
             INSERT OR IGNORE INTO TopicKinds(Id, Name, SortNo) VALUES(3, 'Тема', 3);
         ");
+
+        await _context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS AuditLogs(
+                Id TEXT NOT NULL PRIMARY KEY,
+                Action INTEGER NOT NULL DEFAULT 0,
+                ActorName TEXT NOT NULL,
+                ActorRole INTEGER NOT NULL DEFAULT 0,
+                TargetUserName TEXT NOT NULL,
+                ContestId TEXT,
+                RelatedEntityId TEXT,
+                Details TEXT NOT NULL DEFAULT '',
+                CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );");
+
+        await _context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS UserNotifications(
+                Id TEXT NOT NULL PRIMARY KEY,
+                UserName TEXT NOT NULL,
+                Type INTEGER NOT NULL DEFAULT 0,
+                Title TEXT NOT NULL DEFAULT '',
+                Message TEXT NOT NULL DEFAULT '',
+                IsRead INTEGER NOT NULL DEFAULT 0,
+                CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ReadAt TEXT
+            );");
+
+        await _context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS SanctionAppeals(
+                Id TEXT NOT NULL PRIMARY KEY,
+                ViolationId TEXT NOT NULL,
+                ContestId TEXT NOT NULL,
+                UserName TEXT NOT NULL,
+                Reason TEXT NOT NULL DEFAULT '',
+                Status INTEGER NOT NULL DEFAULT 0,
+                CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ReviewedAt TEXT,
+                ReviewedByAdmin TEXT,
+                AdminComment TEXT
+            );");
     }
 
     private async Task EnsureColumnAsync(string tableName, string columnName, string columnDefinition)

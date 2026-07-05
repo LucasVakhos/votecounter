@@ -83,7 +83,7 @@ public sealed class AuthorizationWebService
     /// </summary>
     public async Task<bool> AssignModeratorAsync(User? adminUser, string username, List<string> contestIds)
     {
-        if (adminUser == null || adminUser.Role != UserRole.Admin)
+        if (adminUser == null || adminUser.Role < UserRole.Admin)
             return false;
 
         var result = _authService.AssignModerator(adminUser, username, contestIds);
@@ -95,7 +95,7 @@ public sealed class AuthorizationWebService
     /// </summary>
     public async Task<bool> RemoveModeratorAsync(User? adminUser, string username)
     {
-        if (adminUser == null || adminUser.Role != UserRole.Admin)
+        if (adminUser == null || adminUser.Role < UserRole.Admin)
             return false;
 
         var result = _authService.RemoveModerator(adminUser, username);
@@ -107,7 +107,7 @@ public sealed class AuthorizationWebService
     /// </summary>
     public async Task<bool> DisableUserAsync(User? adminUser, string username, string? reason = null)
     {
-        if (adminUser == null || adminUser.Role != UserRole.Admin)
+        if (adminUser == null || adminUser.Role < UserRole.Admin)
             return false;
 
         var result = _authService.DisableUser(adminUser, username, reason);

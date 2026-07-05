@@ -10,10 +10,14 @@ namespace Rhymers.Core.Services;
 public sealed class SorrowChatService
 {
     private readonly RhymersDbContext _context;
+    private readonly AuditLogService? _auditLog;
+    private readonly NotificationService? _notifications;
 
-    public SorrowChatService(RhymersDbContext context)
+    public SorrowChatService(RhymersDbContext context, AuditLogService? auditLog = null, NotificationService? notifications = null)
     {
         _context = context;
+        _auditLog = auditLog;
+        _notifications = notifications;
     }
 
     /// <summary>
@@ -171,6 +175,15 @@ public sealed class SorrowChatService
 
         _context.UserViolations.Add(violation);
         await _context.SaveChangesAsync();
+
+        // Аудит + уведомление
+        if (_auditLog != null)
+            await _auditLog.LogAsync(AuditAction.ViolationMarked, moderatorName, UserRole.Moderator,
+                message.AuthorName, $"Нарушение: {type}. {details}", contestId, violation.Id);
+
+        if (_notifications != null)
+            await _notifications.NotifyViolationMarkedAsync(message.AuthorName, type, details);
+
         return violation;
     }
 
@@ -256,6 +269,14 @@ public sealed class SorrowChatService
 
         _context.UserViolations.Update(violation);
         await _context.SaveChangesAsync();
+
+        if (_auditLog != null)
+            await _auditLog.LogAsync(AuditAction.ViolationCleared, moderatorName, UserRole.Moderator,
+                violation.UserName, "Нарушение снято", violation.ContestId, violation.Id);
+
+        if (_notifications != null)
+            await _notifications.NotifyViolationClearedAsync(violation.UserName);
+
         return violation;
     }
 
@@ -285,6 +306,14 @@ public sealed class SorrowChatService
 
         _context.UserViolations.Update(violation);
         await _context.SaveChangesAsync();
+
+        if (_auditLog != null)
+            await _auditLog.LogAsync(AuditAction.SanctionApplied, adminName, UserRole.Admin,
+                violation.UserName, $"Санкция: {sanctionType}. {reason}", violation.ContestId, violation.Id);
+
+        if (_notifications != null)
+            await _notifications.NotifySanctionAppliedAsync(violation.UserName, sanctionType, reason, violation.SanctionExpiredAt);
+
         return violation;
     }
 
@@ -302,6 +331,14 @@ public sealed class SorrowChatService
 
         _context.UserViolations.Update(violation);
         await _context.SaveChangesAsync();
+
+        if (_auditLog != null)
+            await _auditLog.LogAsync(AuditAction.SanctionRemoved, adminName, UserRole.Admin,
+                violation.UserName, "Санкция снята досрочно", violation.ContestId, violation.Id);
+
+        if (_notifications != null)
+            await _notifications.NotifySanctionRemovedAsync(violation.UserName);
+
         return violation;
     }
 

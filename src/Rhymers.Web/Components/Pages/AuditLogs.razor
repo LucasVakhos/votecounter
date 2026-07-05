@@ -1,0 +1,207 @@
+@page "/audit-logs"
+@using Rhymers.Web.Services
+@using Rhymers.Core.Models
+@inject AuditLogWebService AuditService
+@inject AuthorizationWebService AuthService
+
+<div class="container-fluid mt-4">
+    @if (currentUser?.Role < UserRole.Developer)
+    {
+        <div class="alert alert-danger"><strong>❌ Доступ запрещён</strong> — только Разработчик</div>
+        return;
+    }
+
+    <div class="row mb-3">
+        <div class="col">
+            <h2>📋 Журнал аудита</h2>
+            <p class="text-muted">Все действия администрации и модераторов</p>
+        </div>
+    </div>
+
+    <!-- Фильтры -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label">Тип действия</label>
+                    <select class="form-select" @onchange="e => { filterAction = ParseAction(e.Value?.ToString()); currentPage = 1; _ = LoadLogsAsync(); }">
+                        <option value="">-- Все действия --</option>
+                        <option value="0">📌 Нарушение зафиксировано</option>
+                        <option value="1">✅ Нарушение снято</option>
+                        <option value="2">🚫 Санкция применена</option>
+                        <option value="3">✅ Санкция снята</option>
+                        <option value="4">👥 Роль изменена</option>
+                        <option value="5">✅ Жалоба принята</option>
+                        <option value="6">❌ Жалоба отклонена</option>
+                        <option value="7">⏰ Санкция истекла</option>
+                        <option value="8">🤖 Авто-санкция</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Пользователь (цель)</label>
+                    <input class="form-control" placeholder="Имя пользователя..." @bind="filterTarget" @bind:event="oninput" @onkeyup="OnFilterKeyUp" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">От</label>
+                    <input type="date" class="form-control"
+                           @onchange="async e => { filterFrom = string.IsNullOrEmpty(e.Value?.ToString()) ? (DateTime?)null : DateTime.Parse(e.Value.ToString()!); currentPage = 1; await LoadLogsAsync(); }" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">До</label>
+                    <input type="date" class="form-control"
+                           @onchange="async e => { filterTo = string.IsNullOrEmpty(e.Value?.ToString()) ? (DateTime?)null : DateTime.Parse(e.Value.ToString()!); currentPage = 1; await LoadLogsAsync(); }" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">&nbsp;</label>
+                    <button class="btn btn-outline-secondary w-100" @onclick="ResetFilters">🔄 Сброс</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Таблица -->
+    <div class="table-responsive">
+        <table class="table table-sm table-hover">
+            <thead class="table-dark">
+                <tr>
+                    <th>Дата/Время</th>
+                    <th>Действие</th>
+                    <th>Пользователь</th>
+                    <th>Детали</th>
+                    <th>Контест</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (logs.Count == 0)
+                {
+                    <tr><td colspan="5" class="text-center text-muted py-4">Записей не найдено</td></tr>
+                }
+                else
+                {
+                    @foreach (var log in logs)
+                    {
+                        <tr>
+                            <td><small>@log.CreatedAt.ToString("dd.MM.yyyy HH:mm:ss")</small></td>
+                            <td>
+                                <span class="badge @GetActionBadgeClass(log.Action)">
+                                    @GetActionDisplay(log.Action)
+                                </span>
+                            </td>
+                            <td>
+                                <strong>@log.TargetUserName</strong>
+                            </td>
+                            <td><small>@log.Details</small></td>
+                            <td><small class="text-muted">@log.ContestId</small></td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Пагинация -->
+    @if (totalCount > pageSize)
+    {
+        <nav>
+            <ul class="pagination pagination-sm">
+                <li class="page-item @(currentPage == 1 ? "disabled" : "")">
+                    <button class="page-link" @onclick="async () => { currentPage--; await LoadLogsAsync(); }">‹</button>
+                </li>
+                @for (int p = 1; p <= TotalPages; p++)
+                {
+                    var pg = p;
+                    <li class="page-item @(currentPage == pg ? "active" : "")">
+                        <button class="page-link" @onclick="async () => { currentPage = pg; await LoadLogsAsync(); }">@pg</button>
+                    </li>
+                }
+                <li class="page-item @(currentPage >= TotalPages ? "disabled" : "")">
+                    <button class="page-link" @onclick="async () => { currentPage++; await LoadLogsAsync(); }">›</button>
+                </li>
+            </ul>
+        </nav>
+        <small class="text-muted">Всего записей: @totalCount</small>
+    }
+</div>
+
+@code {
+    private User? currentUser;
+    private List<AuditLog> logs = new();
+    private int totalCount = 0;
+    private int currentPage = 1;
+    private int pageSize = 50;
+    private int TotalPages => (int)Math.Ceiling((double)totalCount / pageSize);
+
+    private AuditAction? filterAction;
+    private string filterTarget = string.Empty;
+    private DateTime? filterFrom;
+    private DateTime? filterTo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        if (currentUser?.Role >= UserRole.Developer)
+            await LoadLogsAsync();
+    }
+
+    private async Task LoadLogsAsync()
+    {
+        logs = await AuditService.GetLogsAsync(
+            filterAction, null, string.IsNullOrEmpty(filterTarget) ? null : filterTarget,
+            null, filterFrom, filterTo, currentPage, pageSize);
+
+        totalCount = await AuditService.GetLogsCountAsync(
+            filterAction, null, string.IsNullOrEmpty(filterTarget) ? null : filterTarget,
+            null, filterFrom, filterTo);
+    }
+
+    private async Task OnFilterKeyUp()
+    {
+        currentPage = 1;
+        await LoadLogsAsync();
+    }
+
+    private void ResetFilters()
+    {
+        filterAction = null;
+        filterTarget = string.Empty;
+        filterFrom = null;
+        filterTo = null;
+        currentPage = 1;
+        _ = LoadLogsAsync();
+    }
+
+    private AuditAction? ParseAction(string? val)
+    {
+        if (string.IsNullOrEmpty(val)) return null;
+        if (int.TryParse(val, out var v)) return (AuditAction)v;
+        return null;
+    }
+
+    private string GetActionDisplay(AuditAction action) => action switch
+    {
+        AuditAction.ViolationMarked => "📌 Нарушение",
+        AuditAction.ViolationCleared => "✅ Снято",
+        AuditAction.SanctionApplied => "🚫 Санкция",
+        AuditAction.SanctionRemoved => "✅ Санкция снята",
+        AuditAction.RoleChanged => "👥 Роль",
+        AuditAction.AppealAccepted => "✅ Жалоба принята",
+        AuditAction.AppealRejected => "❌ Жалоба отклонена",
+        AuditAction.SanctionExpired => "⏰ Истекла",
+        AuditAction.AutoSanctionApplied => "🤖 Авто",
+        _ => "?"
+    };
+
+    private string GetActionBadgeClass(AuditAction action) => action switch
+    {
+        AuditAction.ViolationMarked => "bg-warning text-dark",
+        AuditAction.ViolationCleared => "bg-success",
+        AuditAction.SanctionApplied => "bg-danger",
+        AuditAction.SanctionRemoved => "bg-success",
+        AuditAction.RoleChanged => "bg-info",
+        AuditAction.AppealAccepted => "bg-success",
+        AuditAction.AppealRejected => "bg-secondary",
+        AuditAction.SanctionExpired => "bg-secondary",
+        AuditAction.AutoSanctionApplied => "bg-dark",
+        _ => "bg-secondary"
+    };
+}

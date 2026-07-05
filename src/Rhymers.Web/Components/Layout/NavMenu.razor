@@ -1,6 +1,8 @@
-﻿@using Rhymers.Web.Services
+@using Rhymers.Web.Services
 @using Rhymers.Core.Models
 @inject AuthorizationWebService AuthService
+@inject NotificationWebService NotifService
+@inject AppealWebService AppealService
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -9,9 +11,18 @@
             @if (currentUser != null)
             {
                 <span class="text-light me-3">
-                    <strong>@currentUser.DisplayName</strong> 
+                    <strong>@currentUser.DisplayName</strong>
                     <small class="badge @GetRoleBadgeClass(currentUser.Role)">@GetRoleDisplay(currentUser.Role)</small>
                 </span>
+                <a href="notifications" class="btn btn-sm btn-outline-light me-2 position-relative">
+                    🔔
+                    @if (unreadNotifCount > 0)
+                    {
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size:0.65em;">
+                            @(unreadNotifCount > 9 ? "9+" : unreadNotifCount.ToString())
+                        </span>
+                    }
+                </a>
                 <a href="my-submissions" class="btn btn-sm btn-outline-light me-2">👤 ЛК</a>
                 <button @onclick="LogoutAsync" class="btn btn-sm btn-outline-light">🔒 Выход</button>
             }
@@ -25,7 +36,7 @@
 
 <input type="checkbox" title="Navigation menu" class="navbar-toggler" />
 
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+<div class="nav-scrollable" onclick="document.querySelector(\'.navbar-toggler\').click()">
     <nav class="nav flex-column">
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
@@ -108,6 +119,12 @@
                         <span class="oi oi-people" aria-hidden="true"></span> 👨‍💻 Управление ролями
                     </NavLink>
                 </div>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="audit-logs">
+                        <span class="oi oi-list" aria-hidden="true"></span> 📋 Журнал аудита
+                    </NavLink>
+                </div>
             }
 
             <div class="nav-item px-3">
@@ -119,6 +136,16 @@
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="admin/violations">
                     <span class="oi oi-warning" aria-hidden="true"></span> 🎭 Нарушители (Зорро)
+                </NavLink>
+            </div>
+
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="admin/appeals">
+                    <span class="oi oi-comment-square" aria-hidden="true"></span> 🙏 Жалобы
+                    @if (pendingAppealsCount > 0)
+                    {
+                        <span class="badge bg-danger ms-1">@pendingAppealsCount</span>
+                    }
                 </NavLink>
             </div>
         }
@@ -165,16 +192,29 @@
 
 @code {
     private User? currentUser;
+    private int unreadNotifCount = 0;
+    private int pendingAppealsCount = 0;
 
     protected override async Task OnInitializedAsync()
     {
         currentUser = await AuthService.GetCurrentUserAsync();
+        if (currentUser != null)
+        {
+            unreadNotifCount = await NotifService.GetUnreadCountAsync(currentUser.DisplayName);
+            if (currentUser.Role >= UserRole.Admin)
+            {
+                var pendingAppeals = await AppealService.GetAppealsAsync(AppealStatus.Pending);
+                pendingAppealsCount = pendingAppeals.Count;
+            }
+        }
     }
 
     private async Task LogoutAsync()
     {
         await AuthService.SetCurrentUserAsync(null);
         currentUser = null;
+        unreadNotifCount = 0;
+        pendingAppealsCount = 0;
     }
 
     private string GetRoleBadgeClass(UserRole role) => role switch

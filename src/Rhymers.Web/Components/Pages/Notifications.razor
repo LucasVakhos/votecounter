@@ -1,0 +1,120 @@
+@page "/notifications"
+@using Rhymers.Web.Services
+@using Rhymers.Core.Models
+@inject NotificationWebService NotifService
+@inject AuthorizationWebService AuthService
+
+<div class="container mt-4">
+    @if (currentUser == null)
+    {
+        <div class="alert alert-warning"><a href="/auth/login">Войдите</a>, чтобы видеть уведомления.</div>
+        return;
+    }
+
+    <div class="row mb-3 align-items-center">
+        <div class="col">
+            <h2>🔔 Уведомления</h2>
+        </div>
+        <div class="col-auto">
+            @if (notifications.Any(n => !n.IsRead))
+            {
+                <button class="btn btn-sm btn-outline-secondary" @onclick="MarkAllReadAsync">
+                    ✅ Отметить все прочитанными
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (notifications.Count == 0)
+    {
+        <div class="alert alert-info">
+            <strong>📭 Уведомлений нет</strong> — всё спокойно!
+        </div>
+    }
+    else
+    {
+        @foreach (var n in notifications)
+        {
+            <div class="card mb-2 @(n.IsRead ? "" : "border-primary")" style="@(n.IsRead ? "" : "border-width: 2px;")">
+                <div class="card-body py-2">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                @if (!n.IsRead)
+                                {
+                                    <span class="badge bg-primary">NEW</span>
+                                }
+                                <strong>@n.Title</strong>
+                                <span class="badge @GetTypeBadgeClass(n.Type)">@GetTypeIcon(n.Type)</span>
+                            </div>
+                            <p class="mb-1">@n.Message</p>
+                            <small class="text-muted">@n.CreatedAt.ToString("dd.MM.yyyy HH:mm")</small>
+                        </div>
+                        @if (!n.IsRead)
+                        {
+                            <button class="btn btn-sm btn-outline-secondary ms-2" @onclick="() => MarkReadAsync(n.Id)" title="Отметить прочитанным">
+                                ✓
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private User? currentUser;
+    private List<UserNotification> notifications = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        if (currentUser != null)
+            await LoadNotificationsAsync();
+    }
+
+    private async Task LoadNotificationsAsync()
+    {
+        if (currentUser == null) return;
+        notifications = await NotifService.GetNotificationsAsync(currentUser.DisplayName);
+    }
+
+    private async Task MarkReadAsync(string notificationId)
+    {
+        await NotifService.MarkReadAsync(notificationId);
+        await LoadNotificationsAsync();
+    }
+
+    private async Task MarkAllReadAsync()
+    {
+        if (currentUser == null) return;
+        await NotifService.MarkAllReadAsync(currentUser.DisplayName);
+        await LoadNotificationsAsync();
+    }
+
+    private string GetTypeIcon(NotificationType type) => type switch
+    {
+        NotificationType.ViolationMarked => "⚠️",
+        NotificationType.SanctionApplied => "🚫",
+        NotificationType.SanctionExpired => "✅",
+        NotificationType.SanctionRemoved => "✅",
+        NotificationType.ViolationCleared => "✅",
+        NotificationType.AppealAccepted => "✅",
+        NotificationType.AppealRejected => "❌",
+        NotificationType.System => "ℹ️",
+        _ => "🔔"
+    };
+
+    private string GetTypeBadgeClass(NotificationType type) => type switch
+    {
+        NotificationType.ViolationMarked => "bg-warning text-dark",
+        NotificationType.SanctionApplied => "bg-danger",
+        NotificationType.SanctionExpired => "bg-success",
+        NotificationType.SanctionRemoved => "bg-success",
+        NotificationType.ViolationCleared => "bg-success",
+        NotificationType.AppealAccepted => "bg-success",
+        NotificationType.AppealRejected => "bg-secondary",
+        _ => "bg-info"
+    };
+}

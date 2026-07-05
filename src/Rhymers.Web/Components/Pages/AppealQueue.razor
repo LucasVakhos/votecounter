@@ -1,0 +1,206 @@
+@page "/admin/appeals"
+@using Rhymers.Web.Services
+@using Rhymers.Core.Models
+@inject AppealWebService AppealService
+@inject AuthorizationWebService AuthService
+
+<div class="container-fluid mt-4">
+    @if (currentUser?.Role < UserRole.Admin)
+    {
+        <div class="alert alert-danger"><strong>❌ Доступ запрещён</strong></div>
+        return;
+    }
+
+    <div class="row mb-3 align-items-center">
+        <div class="col">
+            <h2>🙏 Жалобы на санкции</h2>
+            <p class="text-muted">Очередь жалоб пользователей для рассмотрения</p>
+        </div>
+        <div class="col-auto">
+            @if (pendingCount > 0)
+            {
+                <span class="badge bg-danger fs-6">@pendingCount ожидает</span>
+            }
+        </div>
+    </div>
+
+    <!-- Фильтр статуса -->
+    <div class="btn-group mb-3">
+        <button class="btn btn-sm @(filterStatus == null ? "btn-primary" : "btn-outline-primary")" @onclick="() => SetFilter(null)">Все (@allAppeals.Count)</button>
+        <button class="btn btn-sm @(filterStatus == AppealStatus.Pending ? "btn-warning" : "btn-outline-warning")" @onclick="() => SetFilter(AppealStatus.Pending)">⏳ Ожидают (@pendingCount)</button>
+        <button class="btn btn-sm @(filterStatus == AppealStatus.Accepted ? "btn-success" : "btn-outline-success")" @onclick="() => SetFilter(AppealStatus.Accepted)">✅ Приняты</button>
+        <button class="btn btn-sm @(filterStatus == AppealStatus.Rejected ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => SetFilter(AppealStatus.Rejected)">❌ Отклонены</button>
+    </div>
+
+    @if (filteredAppeals.Count == 0)
+    {
+        <div class="alert alert-info">Жалоб не найдено</div>
+    }
+    else
+    {
+        @foreach (var appeal in filteredAppeals)
+        {
+            <div class="card mb-3 @(appeal.Status == AppealStatus.Pending ? "border-warning" : "")">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>@appeal.UserName</strong>
+                        <span class="badge @GetStatusBadgeClass(appeal.Status) ms-2">@GetStatusDisplay(appeal.Status)</span>
+                        <small class="text-muted ms-2">@appeal.CreatedAt.ToString("dd.MM.yyyy HH:mm")</small>
+                    </div>
+                    @if (appeal.Status == AppealStatus.Pending)
+                    {
+                        <button class="btn btn-sm btn-outline-primary" @onclick="() => ToggleReviewForm(appeal.Id)">
+                            @(expandedAppealId == appeal.Id ? "✕ Закрыть" : "⚖️ Рассмотреть")
+                        </button>
+                    }
+                </div>
+                <div class="card-body">
+                    <p><strong>Причина жалобы:</strong> @appeal.Reason</p>
+                    <small class="text-muted">Нарушение ID: @appeal.ViolationId | Контест: @appeal.ContestId</small>
+
+                    @if (appeal.Status != AppealStatus.Pending && !string.IsNullOrEmpty(appeal.AdminComment))
+                    {
+                        <div class="alert @(appeal.Status == AppealStatus.Accepted ? "alert-success" : "alert-secondary") mt-2">
+                            <strong>Решение:</strong> @appeal.AdminComment
+                            <br><small>Рассмотрено: @appeal.ReviewedAt?.ToString("dd.MM.yyyy HH:mm")</small>
+                        </div>
+                    }
+
+                    @if (expandedAppealId == appeal.Id)
+                    {
+                        <div class="mt-3 p-3 bg-light rounded">
+                            <h6>Решение по жалобе:</h6>
+                            <div class="mb-2">
+                                <textarea class="form-control" rows="2" placeholder="Комментарий для пользователя (необязательно)..."
+                                          @bind="reviewComments[appeal.Id]"></textarea>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-success" @onclick="() => AcceptAppeal(appeal.Id)" disabled="@processing">
+                                    @if (processing) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                    ✅ Принять (снять санкцию)
+                                </button>
+                                <button class="btn btn-danger" @onclick="() => RejectAppeal(appeal.Id)" disabled="@processing">
+                                    ❌ Отклонить
+                                </button>
+                                <button class="btn btn-outline-secondary" @onclick="() => expandedAppealId = string.Empty">
+                                    Отмена
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert alert-@(isSuccess ? "success" : "danger") mt-3">@message</div>
+    }
+</div>
+
+@code {
+    private User? currentUser;
+    private List<SanctionAppeal> allAppeals = new();
+    private List<SanctionAppeal> filteredAppeals = new();
+    private AppealStatus? filterStatus = AppealStatus.Pending;
+    private string expandedAppealId = string.Empty;
+    private Dictionary<string, string> reviewComments = new();
+    private bool processing = false;
+    private string message = string.Empty;
+    private bool isSuccess = false;
+    private int pendingCount => allAppeals.Count(a => a.Status == AppealStatus.Pending);
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        if (currentUser?.Role >= UserRole.Admin)
+            await LoadAppealsAsync();
+    }
+
+    private async Task LoadAppealsAsync()
+    {
+        allAppeals = await AppealService.GetAppealsAsync();
+        ApplyFilter();
+    }
+
+    private void SetFilter(AppealStatus? status)
+    {
+        filterStatus = status;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        filteredAppeals = filterStatus.HasValue
+            ? allAppeals.Where(a => a.Status == filterStatus).ToList()
+            : allAppeals;
+    }
+
+    private void ToggleReviewForm(string appealId)
+    {
+        expandedAppealId = expandedAppealId == appealId ? string.Empty : appealId;
+        if (!reviewComments.ContainsKey(appealId))
+            reviewComments[appealId] = string.Empty;
+    }
+
+    private async Task AcceptAppeal(string appealId)
+    {
+        try
+        {
+            processing = true;
+            var comment = reviewComments.GetValueOrDefault(appealId, string.Empty);
+            await AppealService.AcceptAppealAsync(appealId, currentUser!.DisplayName, currentUser.Role, comment);
+            message = "✅ Жалоба принята — санкция снята";
+            isSuccess = true;
+            expandedAppealId = string.Empty;
+            await LoadAppealsAsync();
+            await Task.Delay(3000);
+            message = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка: {ex.Message}";
+            isSuccess = false;
+        }
+        finally { processing = false; }
+    }
+
+    private async Task RejectAppeal(string appealId)
+    {
+        try
+        {
+            processing = true;
+            var comment = reviewComments.GetValueOrDefault(appealId, string.Empty);
+            await AppealService.RejectAppealAsync(appealId, currentUser!.DisplayName, currentUser.Role, comment);
+            message = "Жалоба отклонена";
+            isSuccess = false;
+            expandedAppealId = string.Empty;
+            await LoadAppealsAsync();
+            await Task.Delay(3000);
+            message = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка: {ex.Message}";
+            isSuccess = false;
+        }
+        finally { processing = false; }
+    }
+
+    private string GetStatusDisplay(AppealStatus s) => s switch
+    {
+        AppealStatus.Pending => "⏳ Ожидает",
+        AppealStatus.Accepted => "✅ Принята",
+        AppealStatus.Rejected => "❌ Отклонена",
+        _ => "?"
+    };
+
+    private string GetStatusBadgeClass(AppealStatus s) => s switch
+    {
+        AppealStatus.Pending => "bg-warning text-dark",
+        AppealStatus.Accepted => "bg-success",
+        AppealStatus.Rejected => "bg-secondary",
+        _ => "bg-secondary"
+    };
+}

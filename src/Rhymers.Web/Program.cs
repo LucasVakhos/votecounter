@@ -29,6 +29,9 @@ builder.Services.AddScoped<VoteService>();
 builder.Services.AddScoped<ModerationWebService>();
 builder.Services.AddScoped<SorrowChatWebService>();
 builder.Services.AddScoped<AuthorizationWebService>();
+builder.Services.AddScoped<AuditLogWebService>();
+builder.Services.AddScoped<NotificationWebService>();
+builder.Services.AddScoped<AppealWebService>();
 builder.Services.AddScoped<OdnoklassnikiOAuthService>();
 builder.Services.AddHttpClient<OdnoklassnikiOAuthService>();
 builder.Services.AddSession(options =>

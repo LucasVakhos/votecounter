@@ -48,6 +48,11 @@ public static class CoreServiceCollectionExtensions
         services.AddScoped<DiscussionService>();
         services.AddScoped<SorrowChatService>();
 
+        // Moderation audit, notifications, appeals
+        services.AddScoped<AuditLogService>();
+        services.AddScoped<NotificationService>();
+        services.AddScoped<AppealService>();
+
         // Persistence service
         services.AddScoped<PersistenceService>();
 

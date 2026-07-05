@@ -127,8 +127,8 @@ public sealed class RoleAuthorizationService
         if (user == null) return false;
         if (!user.IsActive) return false;
         
-        // Admin может модерировать любой конкурс
-        if (user.Role == UserRole.Admin) return true;
+        // Admin и Developer могут модерировать любой конкурс
+        if (user.Role >= UserRole.Admin) return true;
         
         // Moderator может модерировать только назначенные конкурсы
         if (user.Role == UserRole.Moderator)
@@ -166,11 +166,11 @@ public sealed class RoleAuthorizationService
                 ? AuthorizationResult.Allow()
                 : AuthorizationResult.Deny("Только модераторы могут проверять работы"),
 
-            "manage_moderators" => _currentUser.Role == UserRole.Admin
+            "manage_moderators" => _currentUser.Role >= UserRole.Admin
                 ? AuthorizationResult.Allow()
                 : AuthorizationResult.Deny("Только администраторы могут управлять модераторами"),
 
-            "admin_panel" => _currentUser.Role == UserRole.Admin
+            "admin_panel" => _currentUser.Role >= UserRole.Admin
                 ? AuthorizationResult.Allow()
                 : AuthorizationResult.Deny("Доступ только для администраторов"),
 
@@ -183,7 +183,7 @@ public sealed class RoleAuthorizationService
     /// </summary>
     public bool AssignModerator(User? adminUser, string username, List<string> contestIds)
     {
-        if (adminUser?.Role != UserRole.Admin)
+        if (adminUser == null || adminUser.Role < UserRole.Admin)
             return false;
 
         var user = _context.Users.FirstOrDefault(u => u.Username == username);
@@ -202,7 +202,7 @@ public sealed class RoleAuthorizationService
     /// </summary>
     public bool RemoveModerator(User? adminUser, string username)
     {
-        if (adminUser?.Role != UserRole.Admin)
+        if (adminUser == null || adminUser.Role < UserRole.Admin)
             return false;
 
         var user = _context.Users.FirstOrDefault(u => u.Username == username);
@@ -221,7 +221,7 @@ public sealed class RoleAuthorizationService
     /// </summary>
     public bool DisableUser(User? adminUser, string username, string? reason = null)
     {
-        if (adminUser?.Role != UserRole.Admin)
+        if (adminUser == null || adminUser.Role < UserRole.Admin)
             return false;
 
         var user = _context.Users.FirstOrDefault(u => u.Username == username);
@@ -240,7 +240,7 @@ public sealed class RoleAuthorizationService
     /// </summary>
     public List<User> GetAllUsers(User? adminUser)
     {
-        if (adminUser?.Role != UserRole.Admin)
+        if (adminUser == null || adminUser.Role < UserRole.Admin)
             return new();
 
         return _context.Users.ToList();
@@ -251,7 +251,7 @@ public sealed class RoleAuthorizationService
     /// </summary>
     public List<User> GetAllModerators(User? adminUser)
     {
-        if (adminUser?.Role != UserRole.Admin)
+        if (adminUser == null || adminUser.Role < UserRole.Admin)
             return new();
 
         return _context.Users.Where(u => u.Role == UserRole.Moderator && u.IsActive).ToList();
@@ -270,6 +270,9 @@ public sealed class RoleAuthorizationService
     /// </summary>
     public bool UpdateUserRole(string userId, UserRole newRole)
     {
+        if (_currentUser?.Role != UserRole.Developer)
+            return false;
+
         var user = _context.Users.FirstOrDefault(u => u.Id == userId);
         if (user == null)
             return false;

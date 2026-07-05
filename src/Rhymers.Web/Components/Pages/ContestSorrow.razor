@@ -5,6 +5,7 @@
 @inject DiscussionService DiscussionService
 @inject AuthorizationWebService AuthService
 @inject ContestService ContestService
+@inject AppealWebService AppealService
 @inject NavigationManager NavigationManager
 
 @{
@@ -93,6 +94,35 @@
                                 </button>
                             </div>
                         </form>
+
+                        <!-- Кнопка подачи жалобы -->
+                        <hr />
+                        @if (!showAppealForm)
+                        {
+                            <button class="btn btn-sm btn-outline-warning" @onclick="() => showAppealForm = true">
+                                🙏 Считаете санкцию несправедливой? Подать жалобу
+                            </button>
+                        }
+                        else
+                        {
+                            <div class="mt-2">
+                                <h6>📝 Жалоба на санкцию</h6>
+                                <textarea class="form-control mb-2" rows="3"
+                                          placeholder="Объясните, почему считаете санкцию несправедливой..."
+                                          @bind="appealReason"></textarea>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-sm btn-warning" @onclick="SubmitAppealAsync" disabled="@submittingAppeal">
+                                        @if (submittingAppeal) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                        🙏 Отправить жалобу
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => showAppealForm = false">Отмена</button>
+                                </div>
+                                @if (!string.IsNullOrEmpty(appealMessage))
+                                {
+                                    <div class="alert @(appealSuccess ? "alert-success" : "alert-danger") mt-2 py-1">@appealMessage</div>
+                                }
+                            </div>
+                        }
                     </div>
                 </div>
                 return;
@@ -525,6 +555,13 @@
     private UserViolationStats? userViolationStats;
     private string sanctionCountdown = string.Empty;
     private System.Timers.Timer? sanctionTimer;
+
+    // Appeal state
+    private bool showAppealForm = false;
+    private string appealReason = string.Empty;
+    private string appealMessage = string.Empty;
+    private bool appealSuccess = false;
+    private bool submittingAppeal = false;
     
     // Reply system state
     private string? expandedDiscussionMessageId = null;
@@ -968,6 +1005,51 @@
             return $"{days}д {hours:D2}:{minutes:D2}:{seconds:D2}";
         else
             return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
+    }
+
+    private async Task SubmitAppealAsync()
+    {
+        if (string.IsNullOrWhiteSpace(appealReason) || currentUser == null)
+        {
+            appealMessage = "Укажите причину жалобы";
+            appealSuccess = false;
+            return;
+        }
+
+        try
+        {
+            submittingAppeal = true;
+            var contestId = ContestId ?? "contest-1";
+
+            // Найти активное нарушение с санкцией
+            var activeSanction = await SorrowService.GetActiveSanctionAsync(contestId, currentUser.DisplayName);
+            if (activeSanction == null)
+            {
+                appealMessage = "Активная санкция не найдена";
+                appealSuccess = false;
+                return;
+            }
+
+            await AppealService.SubmitAppealAsync(activeSanction.Id, contestId, currentUser.DisplayName, appealReason);
+            appealMessage = "✅ Жалоба подана! Администрация рассмотрит её в ближайшее время.";
+            appealSuccess = true;
+            showAppealForm = false;
+            appealReason = string.Empty;
+        }
+        catch (InvalidOperationException ex)
+        {
+            appealMessage = $"⚠️ {ex.Message}";
+            appealSuccess = false;
+        }
+        catch (Exception ex)
+        {
+            appealMessage = $"❌ Ошибка: {ex.Message}";
+            appealSuccess = false;
+        }
+        finally
+        {
+            submittingAppeal = false;
+        }
     }
 
     private string GetViolationTypeDisplay(ViolationType type) => type switch
