@@ -1,0 +1,348 @@
+@page "/contest/{ContestId}/sorrow"
+@using Rhymers.Web.Services
+@using Rhymers.Core.Models
+@inject SorrowChatWebService SorrowService
+@inject AuthorizationWebService AuthService
+@inject ContestService ContestService
+@inject NavigationManager NavigationManager
+
+@{
+    var contestId = ContestId ?? "contest-1";
+}
+
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <h1>💔 Страсти по рифме</h1>
+            <p class="text-muted">Поделитесь своими переживаниями, впечатлениями и размышлениями о конкурсе</p>
+
+            @if (currentUser == null)
+            {
+                <div class="alert alert-warning" role="alert">
+                    <strong>⚠️ Требуется вход!</strong> 
+                    <a href="/auth/login" class="alert-link">Войдите в систему</a> чтобы участвовать в чате.
+                </div>
+                return;
+            }
+
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <strong>✍️ Поделиться переживанием</strong>
+                </div>
+                <div class="card-body">
+                    <form @onsubmit="AddMessageAsync">
+                        <div class="mb-3">
+                            <label for="sorrowType" class="form-label">Тип переживания</label>
+                            <select @bind="newMessage.Type" id="sorrowType" class="form-select form-select-sm">
+                                <option value="@SorrowType.Reflection">🤔 Размышление</option>
+                                <option value="@SorrowType.Fear">😰 Страх, волнение</option>
+                                <option value="@SorrowType.Disappointment">😢 Разочарование</option>
+                                <option value="@SorrowType.Inspiration">✨ Вдохновение</option>
+                                <option value="@SorrowType.Support">🤝 Поддержка</option>
+                                <option value="@SorrowType.SelfAnalysis">🔍 Анализ своей работы</option>
+                                <option value="@SorrowType.Impressions">👀 Впечатления</option>
+                                <option value="@SorrowType.LifeCircumstances">🌍 Жизненные обстоятельства</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="content" class="form-label">Что вас волнует? *</label>
+                            <textarea @bind="newMessage.Content" id="content" class="form-control" rows="4"
+                                      placeholder="Поделитесь своими мыслями и чувствами..." required
+                                      style="resize: vertical;"></textarea>
+                            <small class="form-text text-muted">Максимум 2000 символов</small>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
+                                @if (isSubmitting)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                    <span>Отправка...</span>
+                                }
+                                else
+                                {
+                                    <span>💬 Поделиться</span>
+                                }
+                            </button>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(message))
+                        {
+                            <div class="alert @(isSuccess ? "alert-success" : "alert-danger") mt-3" role="alert">
+                                @message
+                            </div>
+                        }
+                    </form>
+                </div>
+            </div>
+
+            @if (stats != null)
+            {
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">💬</h5>
+                                <p class="card-text">@stats.ApprovedMessages сообщений</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">❤️</h5>
+                                <p class="card-text">@stats.TotalEmpathy поддержек</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">👥</h5>
+                                <p class="card-text">@GetUniqueAuthorsCount() участников</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">⏱️</h5>
+                                <p class="card-text">Живой чат</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <h3 class="mt-5">💭 Обсуждение</h3>
+            
+            @if (messages == null || messages.Count == 0)
+            {
+                <div class="alert alert-info" role="alert">
+                    <strong>🤐 Тишина...</strong> Пока никто не поделился своими переживаниями. Вы можете быть первым!
+                </div>
+            }
+            else
+            {
+                @foreach (var msg in messages)
+                {
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <h6 class="card-subtitle mb-1">
+                                        <strong>@msg.AuthorName</strong>
+                                        <span class="badge @GetRoleBadgeClass(msg.AuthorRole)">@GetRoleDisplay(msg.AuthorRole)</span>
+                                    </h6>
+                                    <small class="text-muted">@GetSorrowTypeEmoji(msg.Type) @msg.Type.ToString()</small>
+                                </div>
+                                <small class="text-muted">@GetTimeDisplay(msg.CreatedAt)</small>
+                            </div>
+
+                            <p class="card-text">@msg.Content</p>
+
+                            <div class="d-flex align-items-center gap-2">
+                                <button class="btn btn-sm btn-outline-heart" @onclick="async () => await AddEmpathyAsync(msg.Id)">
+                                    ❤️ @msg.EmpathyCount
+                                </button>
+
+                                @if (currentUser != null && currentUser.Role >= UserRole.Moderator)
+                                {
+                                    <button class="btn btn-sm btn-outline-success" @onclick="async () => await ApproveAsync(msg.Id)" disabled="@msg.IsApproved">
+                                        ✓ Одобрить
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="async () => await HideAsync(msg.Id)" disabled="@msg.IsHidden">
+                                        🚫 Скрыть
+                                    </button>
+                                }
+                            </div>
+
+                            @if (msg.EmpathyCount > 0)
+                            {
+                                <small class="text-muted d-block mt-2">Поддержало @msg.EmpathyCount человек(а)</small>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .btn-outline-heart:hover {
+        color: #dc3545;
+        border-color: #dc3545;
+        background-color: transparent;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public string? ContestId { get; set; }
+
+    private User? currentUser;
+    private List<ContestSorrowMessage> messages = new();
+    private SorrowChatStatsDto? stats;
+    private AddSorrowMessageRequest newMessage = new();
+    private string message = "";
+    private bool isSuccess = false;
+    private bool isSubmitting = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        var contestId = ContestId ?? "contest-1";
+        
+        await LoadMessagesAsync(contestId);
+        await LoadStatsAsync(contestId);
+    }
+
+    private async Task LoadMessagesAsync(string contestId)
+    {
+        try
+        {
+            messages = await SorrowService.GetApprovedSorrowMessagesAsync(contestId);
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка при загрузке сообщений: {ex.Message}";
+            isSuccess = false;
+        }
+    }
+
+    private async Task LoadStatsAsync(string contestId)
+    {
+        try
+        {
+            stats = await SorrowService.GetChatStatsAsync(contestId);
+        }
+        catch (Exception ex)
+        {
+            // Ignore stats loading errors
+        }
+    }
+
+    private async Task AddMessageAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newMessage.Content) || currentUser == null)
+            return;
+
+        try
+        {
+            isSubmitting = true;
+            var contestId = ContestId ?? "contest-1";
+            await SorrowService.AddSorrowMessageAsync(contestId, newMessage);
+
+            message = "✅ Спасибо за ваше переживание! Модератор его проверит.";
+            isSuccess = true;
+
+            newMessage = new();
+            await LoadMessagesAsync(contestId);
+            await LoadStatsAsync(contestId);
+
+            await Task.Delay(2000);
+            message = "";
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Ошибка: {ex.Message}";
+            isSuccess = false;
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task AddEmpathyAsync(string messageId)
+    {
+        try
+        {
+            await SorrowService.AddEmpathyAsync(messageId);
+            var contestId = ContestId ?? "contest-1";
+            await LoadMessagesAsync(contestId);
+            await LoadStatsAsync(contestId);
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка: {ex.Message}";
+        }
+    }
+
+    private async Task ApproveAsync(string messageId)
+    {
+        try
+        {
+            await SorrowService.ApproveSorrowMessageAsync(messageId);
+            var contestId = ContestId ?? "contest-1";
+            await LoadMessagesAsync(contestId);
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка при одобрении: {ex.Message}";
+        }
+    }
+
+    private async Task HideAsync(string messageId)
+    {
+        try
+        {
+            await SorrowService.HideSorrowMessageAsync(messageId);
+            var contestId = ContestId ?? "contest-1";
+            await LoadMessagesAsync(contestId);
+        }
+        catch (Exception ex)
+        {
+            message = $"Ошибка при скрытии: {ex.Message}";
+        }
+    }
+
+    private string GetSorrowTypeEmoji(SorrowType type) => type switch
+    {
+        SorrowType.Reflection => "🤔",
+        SorrowType.Fear => "😰",
+        SorrowType.Disappointment => "😢",
+        SorrowType.Inspiration => "✨",
+        SorrowType.Support => "🤝",
+        SorrowType.SelfAnalysis => "🔍",
+        SorrowType.Impressions => "👀",
+        SorrowType.LifeCircumstances => "🌍",
+        _ => "💭"
+    };
+
+    private string GetRoleDisplay(UserRole role) => role switch
+    {
+        UserRole.Reader => "👤 Читатель",
+        UserRole.Author => "✍️ Автор",
+        UserRole.Moderator => "👮 Модератор",
+        UserRole.Admin => "👑 Админ",
+        _ => "Участник"
+    };
+
+    private string GetRoleBadgeClass(UserRole role) => role switch
+    {
+        UserRole.Admin => "bg-danger",
+        UserRole.Moderator => "bg-warning",
+        UserRole.Author => "bg-info",
+        _ => "bg-secondary"
+    };
+
+    private string GetTimeDisplay(DateTime time)
+    {
+        var diff = DateTime.Now - time;
+        if (diff.TotalMinutes < 1)
+            return "только что";
+        if (diff.TotalMinutes < 60)
+            return $"{(int)diff.TotalMinutes}м назад";
+        if (diff.TotalHours < 24)
+            return $"{(int)diff.TotalHours}ч назад";
+        return time.ToString("dd.MM.yyyy");
+    }
+
+    private int GetUniqueAuthorsCount()
+    {
+        return messages.Select(m => m.AuthorName).Distinct().Count();
+    }
+}

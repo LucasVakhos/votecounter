@@ -399,6 +399,24 @@ public sealed class PersistenceService
             );");
 
         await _context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS ContestSorrowMessages(
+                Id TEXT NOT NULL PRIMARY KEY,
+                ContestId TEXT NOT NULL,
+                AuthorName TEXT NOT NULL,
+                AuthorRole INTEGER NOT NULL,
+                Content TEXT NOT NULL,
+                IsApproved INTEGER NOT NULL DEFAULT 1,
+                IsHidden INTEGER NOT NULL DEFAULT 0,
+                CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UpdatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ApprovedAt TEXT,
+                ApprovedBy TEXT,
+                EmpathyCount INTEGER NOT NULL DEFAULT 0,
+                ParentMessageId TEXT,
+                Type INTEGER NOT NULL DEFAULT 0
+            );");
+
+        await _context.Database.ExecuteSqlRawAsync(@"
             INSERT OR IGNORE INTO TopicKinds(Id, Name, SortNo) VALUES(1, 'Строка', 1);
             INSERT OR IGNORE INTO TopicKinds(Id, Name, SortNo) VALUES(2, 'Картина', 2);
             INSERT OR IGNORE INTO TopicKinds(Id, Name, SortNo) VALUES(3, 'Тема', 3);

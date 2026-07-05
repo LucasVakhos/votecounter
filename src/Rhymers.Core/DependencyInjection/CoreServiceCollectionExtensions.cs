@@ -46,6 +46,7 @@ public static class CoreServiceCollectionExtensions
 
         // Discussion and review services
         services.AddScoped<DiscussionService>();
+        services.AddScoped<SorrowChatService>();
 
         // Persistence service
         services.AddScoped<PersistenceService>();

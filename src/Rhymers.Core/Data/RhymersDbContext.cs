@@ -27,6 +27,7 @@ public sealed class RhymersDbContext : DbContext
     public DbSet<VoterSetting> Voters { get; set; } = null!;
     public DbSet<ContestComment> ContestComments { get; set; } = null!;
     public DbSet<WorkReview> WorkReviews { get; set; } = null!;
+    public DbSet<ContestSorrowMessage> SorrowMessages { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -257,6 +258,30 @@ public sealed class RhymersDbContext : DbContext
             entity.HasIndex(r => r.CreatedAt);
             entity.HasIndex(r => r.IsApproved);
             entity.HasIndex(r => new { r.ContestId, r.WorkNumber });
+        });
+
+        // SorrowMessage конфигурация (Страсти по рифме)
+        modelBuilder.Entity<ContestSorrowMessage>(entity =>
+        {
+            entity.ToTable("ContestSorrowMessages");
+            entity.HasKey(m => m.Id);
+            entity.Property(m => m.Id).ValueGeneratedNever();
+            entity.Property(m => m.ContestId).HasMaxLength(256).IsRequired();
+            entity.Property(m => m.AuthorName).HasMaxLength(256).IsRequired();
+            entity.Property(m => m.Content).IsRequired();
+            entity.Property(m => m.AuthorRole).IsRequired();
+            entity.Property(m => m.IsApproved).HasDefaultValue(true);
+            entity.Property(m => m.IsHidden).HasDefaultValue(false);
+            entity.Property(m => m.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(m => m.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(m => m.ApprovedBy).HasMaxLength(256);
+            entity.Property(m => m.ParentMessageId).HasMaxLength(256);
+            entity.Property(m => m.Type).IsRequired();
+            entity.Property(m => m.EmpathyCount).HasDefaultValue(0);
+            entity.HasIndex(m => m.ContestId);
+            entity.HasIndex(m => m.CreatedAt);
+            entity.HasIndex(m => m.IsApproved);
+            entity.HasIndex(m => m.ParentMessageId);
         });
     }
 }

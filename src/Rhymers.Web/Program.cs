@@ -27,6 +27,7 @@ builder.Services.AddDbContext<RhymersDbContext>(options =>
 builder.Services.AddScoped<ContestService>();
 builder.Services.AddScoped<VoteService>();
 builder.Services.AddScoped<ModerationWebService>();
+builder.Services.AddScoped<SorrowChatWebService>();
 builder.Services.AddScoped<AuthorizationWebService>();
 builder.Services.AddScoped<OdnoklassnikiOAuthService>();
 builder.Services.AddHttpClient<OdnoklassnikiOAuthService>();
