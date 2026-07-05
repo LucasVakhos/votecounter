@@ -75,6 +75,71 @@ public class ContestService
         await _context.SaveChangesAsync();
     }
 
+    public async Task<List<TopicKind>> GetTopicKindsAsync()
+    {
+        return await _context.TopicKinds
+            .OrderBy(k => k.SortNo)
+            .ThenBy(k => k.Name)
+            .ToListAsync();
+    }
+
+    public async Task<TopicKind?> AddTopicKindAsync(string name)
+    {
+        var normalized = NormalizeKindName(name);
+        if (normalized.Length == 0)
+            return null;
+
+        var exists = await _context.TopicKinds.AnyAsync(k => k.Name.ToLower() == normalized.ToLower());
+        if (exists)
+            return null;
+
+        var nextSort = await _context.TopicKinds.Select(k => (int?)k.SortNo).MaxAsync() ?? 0;
+        var kind = new TopicKind
+        {
+            Name = normalized,
+            SortNo = nextSort + 1
+        };
+
+        _context.TopicKinds.Add(kind);
+        await _context.SaveChangesAsync();
+        return kind;
+    }
+
+    public async Task<bool> RenameTopicKindAsync(int kindId, string newName)
+    {
+        var normalized = NormalizeKindName(newName);
+        if (normalized.Length == 0)
+            return false;
+
+        var kind = await _context.TopicKinds.FirstOrDefaultAsync(k => k.Id == kindId);
+        if (kind == null)
+            return false;
+
+        var duplicate = await _context.TopicKinds
+            .AnyAsync(k => k.Id != kindId && k.Name.ToLower() == normalized.ToLower());
+        if (duplicate)
+            return false;
+
+        kind.Name = normalized;
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<(bool success, string error)> DeleteTopicKindAsync(int kindId)
+    {
+        var kind = await _context.TopicKinds.FirstOrDefaultAsync(k => k.Id == kindId);
+        if (kind == null)
+            return (false, "Разновидность не найдена.");
+
+        var hasTopics = await _context.Topics.AnyAsync(t => t.TopicKindId == kindId);
+        if (hasTopics)
+            return (false, "Нельзя удалить разновидность, которая уже используется в темах.");
+
+        _context.TopicKinds.Remove(kind);
+        await _context.SaveChangesAsync();
+        return (true, string.Empty);
+    }
+
     public async Task<List<string>> GetPreviousContestWinnerTopicSuggestionsAsync(string contestId, int take = 8)
     {
         var contests = await _context.Contests
@@ -126,7 +191,9 @@ public class ContestService
         string contestId,
         IEnumerable<string> winnerTopics,
         IEnumerable<string> regularTopics,
-        string proposedBy)
+        string proposedBy,
+        int? winnerTopicKindId,
+        int? regularTopicKindId)
     {
         var contest = await _context.Contests.FirstOrDefaultAsync(c => c.Id == contestId);
         if (contest == null)
@@ -169,6 +236,7 @@ public class ContestService
                 ContestId = contestId,
                 Number = nextNumber++,
                 Title = title,
+                TopicKindId = winnerTopicKindId,
                 ProposedBy = proposedBy,
                 IsWinnerTopic = true,
                 SubmittedAt = DateTime.Now
@@ -199,6 +267,7 @@ public class ContestService
                 ContestId = contestId,
                 Number = nextNumber++,
                 Title = title,
+                TopicKindId = regularTopicKindId,
                 ProposedBy = proposedBy,
                 IsWinnerTopic = false,
                 SubmittedAt = DateTime.Now
@@ -289,5 +358,15 @@ public class ContestService
             return 0;
 
         return int.TryParse(number, out var parsed) ? parsed : 0;
+    }
+
+    private static string NormalizeKindName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return string.Join(' ', value
+            .Trim()
+            .Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries));
     }
 }

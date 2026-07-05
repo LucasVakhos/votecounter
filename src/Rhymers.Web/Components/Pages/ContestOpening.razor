@@ -36,6 +36,47 @@
     @if (!string.IsNullOrWhiteSpace(selectedContestId) && selectedContest != null)
     {
         <div class="card mb-3">
+            <div class="card-header">Разновидности тем</div>
+            <div class="card-body">
+                <div class="input-group mb-3">
+                    <input class="form-control" @bind="newTopicKindName" placeholder="Новая разновидность" />
+                    <button class="btn btn-outline-primary" @onclick="AddTopicKindAsync">Добавить</button>
+                </div>
+
+                @if (topicKinds.Count == 0)
+                {
+                    <div class="text-muted">Список разновидностей пока пуст.</div>
+                }
+                else
+                {
+                    <ul class="list-group">
+                        @foreach (var kind in topicKinds)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                @if (editingKindId == kind.Id)
+                                {
+                                    <div class="input-group me-2">
+                                        <input class="form-control" @bind="editingKindName" />
+                                        <button class="btn btn-success" @onclick="() => SaveTopicKindRenameAsync(kind.Id)">Сохранить</button>
+                                        <button class="btn btn-outline-secondary" @onclick="CancelTopicKindEdit">Отмена</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span>@kind.Name</span>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-secondary" @onclick="() => StartTopicKindEdit(kind)">Изменить</button>
+                                        <button class="btn btn-outline-danger" @onclick="() => DeleteTopicKindAsync(kind.Id)">Удалить</button>
+                                    </div>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+
+        <div class="card mb-3">
             <div class="card-header">Настройки конкурса</div>
             <div class="card-body">
                 <label class="form-label">Ограничение максимального количества тем</label>
@@ -57,6 +98,14 @@
                 <div class="card h-100 border-warning">
                     <div class="card-header bg-warning-subtle">Темы победителей прошлого конкурса (принимаются в первую очередь)</div>
                     <div class="card-body">
+                        <label class="form-label">Разновидность для этих тем</label>
+                        <select class="form-select mb-2" @bind="selectedWinnerTopicKindId">
+                            <option value="">-- без разновидности --</option>
+                            @foreach (var kind in topicKinds)
+                            {
+                                <option value="@kind.Id">@kind.Name</option>
+                            }
+                        </select>
                         <textarea class="form-control mb-2" rows="8" @bind="winnerTopicsText"
                                   placeholder="По одной теме на строку"></textarea>
                         <button class="btn btn-outline-warning btn-sm" @onclick="LoadWinnerSuggestionsAsync">Подтянуть из прошлого конкурса</button>
@@ -67,6 +116,14 @@
                 <div class="card h-100">
                     <div class="card-header">Обычные подачи тем</div>
                     <div class="card-body">
+                        <label class="form-label">Разновидность для этих тем</label>
+                        <select class="form-select mb-2" @bind="selectedRegularTopicKindId">
+                            <option value="">-- без разновидности --</option>
+                            @foreach (var kind in topicKinds)
+                            {
+                                <option value="@kind.Id">@kind.Name</option>
+                            }
+                        </select>
                         <textarea class="form-control" rows="8" @bind="regularTopicsText"
                                   placeholder="По одной теме на строку"></textarea>
                     </div>
@@ -97,11 +154,19 @@
                         @foreach (var topic in topics.OrderBy(t => t.Number))
                         {
                             <li class="list-group-item d-flex justify-content-between align-items-center">
-                                <span><strong>@topic.Number.</strong> @topic.Title</span>
-                                @if (topic.IsWinnerTopic)
-                                {
-                                    <span class="badge text-bg-warning">из тем победителей</span>
-                                }
+                                <div>
+                                    <span><strong>@topic.Number.</strong> @topic.Title</span>
+                                    @if (!string.IsNullOrWhiteSpace(GetTopicKindName(topic.TopicKindId)))
+                                    {
+                                        <span class="badge text-bg-info ms-2">@GetTopicKindName(topic.TopicKindId)</span>
+                                    }
+                                </div>
+                                <div>
+                                    @if (topic.IsWinnerTopic)
+                                    {
+                                        <span class="badge text-bg-warning">из тем победителей</span>
+                                    }
+                                </div>
                             </li>
                         }
                     </ul>
@@ -121,6 +186,12 @@
     private string announcementText = string.Empty;
     private string winnerTopicsText = string.Empty;
     private string regularTopicsText = string.Empty;
+    private List<TopicKind> topicKinds = new();
+    private int? selectedWinnerTopicKindId;
+    private int? selectedRegularTopicKindId;
+    private string newTopicKindName = string.Empty;
+    private int? editingKindId;
+    private string editingKindName = string.Empty;
 
     private List<ContestTopic> topics = new();
     private string message = string.Empty;
@@ -130,6 +201,7 @@
     {
         currentUser = await AuthService.GetCurrentUserAsync();
         contests = (await ContestService.GetContestsAsync()).ToList();
+        await ReloadTopicKindsAsync();
     }
 
     private async Task OnContestChangedAsync(ChangeEventArgs e)
@@ -150,7 +222,83 @@
         selectedContest = await ContestService.GetContestAsync(selectedContestId);
         maxTopicsCount = selectedContest?.MaxTopicsCount ?? 0;
         announcementText = BuildAnnouncement(selectedContest);
+        await ReloadTopicKindsAsync();
         await ReloadTopicsAsync();
+    }
+
+    private async Task ReloadTopicKindsAsync()
+    {
+        topicKinds = await ContestService.GetTopicKindsAsync();
+
+        if (topicKinds.Count > 0)
+        {
+            selectedWinnerTopicKindId ??= topicKinds[0].Id;
+            selectedRegularTopicKindId ??= topicKinds[0].Id;
+        }
+    }
+
+    private async Task AddTopicKindAsync()
+    {
+        var added = await ContestService.AddTopicKindAsync(newTopicKindName);
+        if (added == null)
+        {
+            message = "Не удалось добавить разновидность: пустое имя или дубль.";
+            isSuccess = false;
+            return;
+        }
+
+        newTopicKindName = string.Empty;
+        await ReloadTopicKindsAsync();
+        message = "Разновидность добавлена.";
+        isSuccess = true;
+    }
+
+    private void StartTopicKindEdit(TopicKind kind)
+    {
+        editingKindId = kind.Id;
+        editingKindName = kind.Name;
+    }
+
+    private void CancelTopicKindEdit()
+    {
+        editingKindId = null;
+        editingKindName = string.Empty;
+    }
+
+    private async Task SaveTopicKindRenameAsync(int kindId)
+    {
+        var renamed = await ContestService.RenameTopicKindAsync(kindId, editingKindName);
+        if (!renamed)
+        {
+            message = "Не удалось переименовать разновидность: пустое имя или дубль.";
+            isSuccess = false;
+            return;
+        }
+
+        CancelTopicKindEdit();
+        await ReloadTopicKindsAsync();
+        message = "Разновидность обновлена.";
+        isSuccess = true;
+    }
+
+    private async Task DeleteTopicKindAsync(int kindId)
+    {
+        var (success, error) = await ContestService.DeleteTopicKindAsync(kindId);
+        if (!success)
+        {
+            message = error;
+            isSuccess = false;
+            return;
+        }
+
+        if (selectedWinnerTopicKindId == kindId)
+            selectedWinnerTopicKindId = null;
+        if (selectedRegularTopicKindId == kindId)
+            selectedRegularTopicKindId = null;
+
+        await ReloadTopicKindsAsync();
+        message = "Разновидность удалена.";
+        isSuccess = true;
     }
 
     private async Task ReloadTopicsAsync()
@@ -198,7 +346,9 @@
             selectedContestId,
             winnerTopics,
             regularTopics,
-            proposedBy);
+            proposedBy,
+            selectedWinnerTopicKindId,
+            selectedRegularTopicKindId);
 
         await ReloadTopicsAsync();
 
@@ -230,5 +380,14 @@
         return header + Environment.NewLine +
                "В первую очередь принимаются темы победителей прошлого конкурса." + Environment.NewLine +
                "Подавайте темы по одной строке.";
+    }
+
+    private string GetTopicKindName(int? kindId)
+    {
+        if (!kindId.HasValue)
+            return string.Empty;
+
+        var kind = topicKinds.FirstOrDefault(k => k.Id == kindId.Value);
+        return kind?.Name ?? string.Empty;
     }
 }

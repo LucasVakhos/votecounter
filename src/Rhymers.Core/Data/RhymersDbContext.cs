@@ -18,6 +18,7 @@ public sealed class RhymersDbContext : DbContext
     public DbSet<Contest> Contests { get; set; } = null!;
     public DbSet<WorkSubmission> Submissions { get; set; } = null!;
     public DbSet<ContestTopic> Topics { get; set; } = null!;
+    public DbSet<TopicKind> TopicKinds { get; set; } = null!;
     public DbSet<VoterSetting> Voters { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -83,10 +84,21 @@ public sealed class RhymersDbContext : DbContext
             entity.HasKey(t => new { t.ContestId, t.Number });
             entity.Property(t => t.ContestId).HasMaxLength(256).IsRequired();
             entity.Property(t => t.Title).HasMaxLength(512);
+            entity.Property(t => t.TopicKindId);
             entity.Property(t => t.ProposedBy).HasMaxLength(256);
             entity.Property(t => t.IsWinnerTopic).HasDefaultValue(false);
             entity.Property(t => t.SubmittedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.HasIndex(t => t.ContestId);
+        });
+
+        modelBuilder.Entity<TopicKind>(entity =>
+        {
+            entity.ToTable("TopicKinds");
+            entity.HasKey(k => k.Id);
+            entity.Property(k => k.Id).ValueGeneratedOnAdd();
+            entity.Property(k => k.Name).HasMaxLength(128).IsRequired();
+            entity.Property(k => k.SortNo).HasDefaultValue(0);
+            entity.HasIndex(k => k.Name).IsUnique();
         });
 
         // VoterSetting конфигурация

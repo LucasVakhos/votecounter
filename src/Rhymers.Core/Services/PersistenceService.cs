@@ -166,6 +166,7 @@ public sealed class PersistenceService
         _context.Contests.RemoveRange(_context.Contests);
         _context.Submissions.RemoveRange(_context.Submissions);
         _context.Topics.RemoveRange(_context.Topics);
+        _context.TopicKinds.RemoveRange(_context.TopicKinds);
         _context.Voters.RemoveRange(_context.Voters);
 
         await _context.SaveChangesAsync();
@@ -238,15 +239,30 @@ public sealed class PersistenceService
                 ContestId TEXT NOT NULL,
                 Number INTEGER NOT NULL,
                 Title TEXT NOT NULL,
+                TopicKindId INTEGER NULL,
                 ProposedBy TEXT NOT NULL DEFAULT '',
                 IsWinnerTopic INTEGER NOT NULL DEFAULT 0,
                 SubmittedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY(ContestId, Number)
             );");
 
+        await _context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS TopicKinds(
+                Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL UNIQUE,
+                SortNo INTEGER NOT NULL DEFAULT 0
+            );");
+
+        await EnsureColumnAsync("ContestTopics", "TopicKindId", "INTEGER NULL");
         await EnsureColumnAsync("ContestTopics", "ProposedBy", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync("ContestTopics", "IsWinnerTopic", "INTEGER NOT NULL DEFAULT 0");
         await EnsureColumnAsync("ContestTopics", "SubmittedAt", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP");
+
+        await _context.Database.ExecuteSqlRawAsync(@"
+            INSERT OR IGNORE INTO TopicKinds(Id, Name, SortNo) VALUES(1, 'Строка', 1);
+            INSERT OR IGNORE INTO TopicKinds(Id, Name, SortNo) VALUES(2, 'Картина', 2);
+            INSERT OR IGNORE INTO TopicKinds(Id, Name, SortNo) VALUES(3, 'Тема', 3);
+        ");
     }
 
     private async Task EnsureColumnAsync(string tableName, string columnName, string columnDefinition)
