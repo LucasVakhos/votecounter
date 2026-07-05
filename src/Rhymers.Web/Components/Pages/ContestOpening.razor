@@ -93,6 +93,16 @@
                     <span class="badge text-bg-primary ms-2">@ContestService.GetContestStageTitle(ContestService.GetContestStage(selectedContest))</span>
                 </div>
 
+                <div class="alert @(autoStageSwitchEnabled ? "alert-info" : "alert-warning") py-2 mb-3">
+                    <strong>Режим ведения:</strong>
+                    @(autoStageSwitchEnabled ? "Автоматический" : "Ручной (на случай занятости администрации)")
+                </div>
+
+                <div class="d-flex gap-2 mb-3">
+                    <button class="btn btn-sm btn-outline-warning" @onclick="SwitchToManualModeAsync" disabled="@(!autoStageSwitchEnabled)">Переключить в ручной</button>
+                    <button class="btn btn-sm btn-outline-success" @onclick="SwitchToAutoModeAsync" disabled="@(autoStageSwitchEnabled)">Переключить в автоматический</button>
+                </div>
+
                 <div class="row g-2 mb-3">
                     <div class="col-md-8">
                         <label class="form-label">Ручное переключение модератором</label>
@@ -108,9 +118,65 @@
                     </div>
                 </div>
 
+                <div class="row g-2 mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Срок отката (часы)</label>
+                        <input type="number" min="1" max="168" class="form-control" @bind="rollbackWindowHours" />
+                        <div class="form-text">Например: 5 часов после входа в текущую стадию.</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Причина отката (если участники не успели к сроку)</label>
+                        <input class="form-control" @bind="rollbackReason" placeholder="Например: поэты не успели подать работы к закрытию" />
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button class="btn btn-outline-danger w-100" @onclick="ApplyRollbackStageAsync">Откатить на предыдущую стадию</button>
+                    </div>
+                </div>
+
                 <div class="form-check form-switch mb-3">
                     <input class="form-check-input" type="checkbox" @bind="autoStageSwitchEnabled" id="autoStageSwitch" />
                     <label class="form-check-label" for="autoStageSwitch">Автоматическое переключение по расписанию (день недели + время)</label>
+                </div>
+
+                <div class="card mb-3 border-secondary-subtle">
+                    <div class="card-header">Автоназначение тем при отсутствии администрации</div>
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" @bind="autoTopicAssignmentEnabled" id="autoTopicAssignmentSwitch" />
+                            <label class="form-check-label" for="autoTopicAssignmentSwitch">Включить автоназначение тем на стадии открытия конкурса</label>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label">Целевое количество тем</label>
+                                <input type="number" min="1" max="30" class="form-control" @bind="autoTopicAssignmentTargetCount" />
+                            </div>
+                            <div class="col-md-8 d-flex align-items-end">
+                                <div class="form-text mb-1">Система возьмёт темы победителей прошлого конкурса, а при нехватке подставит резервные темы автоматически.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-3 border-success-subtle">
+                    <div class="card-header">Честное голосование</div>
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" @bind="autoFairVotingEnabled" id="autoFairVotingSwitch" />
+                            <label class="form-check-label" for="autoFairVotingSwitch">Включить авто-проставление честных оценок в стадии голосования</label>
+                        </div>
+                        <div class="form-text">Система ставит по одной оценке каждой работе по среднему баллу участников; если голосов нет, используется базовый балл конкурса.</div>
+                    </div>
+                </div>
+
+                <div class="card mb-3 border-info-subtle">
+                    <div class="card-header">Автоголосование администрации при закрытии голосования</div>
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" @bind="autoAdminAverageVotingOnCloseEnabled" id="autoAdminAverageVotingOnCloseSwitch" />
+                            <label class="form-check-label" for="autoAdminAverageVotingOnCloseSwitch">Включить проставление административных оценок по среднему баллу всех голосов</label>
+                        </div>
+                        <div class="form-text">Срабатывает при переходе со стадии открытого голосования к закрытию приема голосов и подготовке регалий.</div>
+                    </div>
                 </div>
 
                 <div class="row g-2">
@@ -225,6 +291,41 @@
             <button class="btn btn-outline-secondary" @onclick="ReloadTopicsAsync">Обновить список тем</button>
         </div>
 
+        @if (currentUser.Role == UserRole.Admin)
+        {
+            <div class="card mt-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Таймлайн ручного ведения</span>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="LoadTimelineAsync">Обновить</button>
+                </div>
+                <div class="card-body">
+                    @if (timelineEvents.Count == 0)
+                    {
+                        <div class="text-muted">Событий пока нет.</div>
+                    }
+                    else
+                    {
+                        <ul class="list-group">
+                            @foreach (var ev in timelineEvents)
+                            {
+                                <li class="list-group-item">
+                                    <div class="d-flex justify-content-between">
+                                        <strong class="@GetTimelineTextClass(ev.EventType)">@GetTimelineTitle(ev)</strong>
+                                        <small class="text-muted">@ev.CreatedAt.ToString("dd.MM.yyyy HH:mm")</small>
+                                    </div>
+                                    <div>@ev.Message</div>
+                                    @if (!string.IsNullOrWhiteSpace(ev.CreatedBy))
+                                    {
+                                        <small class="text-muted">Инициатор: @ev.CreatedBy</small>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        }
+
         @if (!string.IsNullOrWhiteSpace(message))
         {
             <div class="alert @(isSuccess ? "alert-success" : "alert-danger") mt-3">@message</div>
@@ -240,7 +341,7 @@
                 else
                 {
                     <ul class="list-group">
-                        @foreach (var topic in topics.OrderBy(t => t.Number))
+                        @foreach (var topic in topics.OrderBy(t => t.SubmittedAt).ThenBy(t => t.Number))
                         {
                             <li class="list-group-item d-flex justify-content-between align-items-center">
                                 <div>
@@ -291,6 +392,12 @@
     private string votingOpenSwitchTime = string.Empty;
     private int? votingClosedSwitchDayOfWeek;
     private string votingClosedSwitchTime = string.Empty;
+    private string rollbackReason = "Запоздалые действия участников";
+    private int rollbackWindowHours = 5;
+    private bool autoTopicAssignmentEnabled;
+    private int autoTopicAssignmentTargetCount = 5;
+    private bool autoFairVotingEnabled;
+    private bool autoAdminAverageVotingOnCloseEnabled;
     private static readonly (int Value, string Label)[] weekDays =
     {
         ((int)DayOfWeek.Monday, "Понедельник"),
@@ -303,6 +410,7 @@
     };
 
     private List<ContestTopic> topics = new();
+    private List<ContestStageTimelineEvent> timelineEvents = new();
     private string message = string.Empty;
     private bool isSuccess;
 
@@ -340,9 +448,15 @@
         votingOpenSwitchTime = selectedContest?.VotingOpenSwitchTime ?? string.Empty;
         votingClosedSwitchDayOfWeek = selectedContest?.VotingClosedSwitchDayOfWeek;
         votingClosedSwitchTime = selectedContest?.VotingClosedSwitchTime ?? string.Empty;
+        rollbackWindowHours = Math.Clamp(selectedContest?.RollbackWindowHours ?? 5, 1, 168);
+        autoTopicAssignmentEnabled = selectedContest?.AutoTopicAssignmentEnabled ?? false;
+        autoTopicAssignmentTargetCount = Math.Clamp(selectedContest?.AutoTopicAssignmentTargetCount ?? 5, 1, 30);
+        autoFairVotingEnabled = selectedContest?.AutoFairVotingEnabled ?? false;
+        autoAdminAverageVotingOnCloseEnabled = selectedContest?.AutoAdminAverageVotingOnCloseEnabled ?? false;
         announcementText = BuildAnnouncement(selectedContest);
         await ReloadTopicKindsAsync();
         await ReloadTopicsAsync();
+        await LoadTimelineAsync();
     }
 
     private async Task ReloadTopicKindsAsync()
@@ -466,7 +580,12 @@
             votingOpenSwitchDayOfWeek,
             votingOpenSwitchTime,
             votingClosedSwitchDayOfWeek,
-            votingClosedSwitchTime);
+            votingClosedSwitchTime,
+            rollbackWindowHours,
+            autoTopicAssignmentEnabled,
+            autoTopicAssignmentTargetCount,
+            autoFairVotingEnabled,
+            autoAdminAverageVotingOnCloseEnabled);
 
         var proposedBy = string.IsNullOrWhiteSpace(currentUser?.DisplayName)
             ? currentUser?.Username ?? "system"
@@ -502,6 +621,78 @@
         selectedContest = await ContestService.GetContestAsync(selectedContestId);
         message = $"Стадия изменена: {ContestService.GetContestStageTitle(manualStage)}.";
         isSuccess = true;
+        await LoadTimelineAsync();
+    }
+
+    private async Task ApplyRollbackStageAsync()
+    {
+        if (string.IsNullOrWhiteSpace(selectedContestId) || selectedContest == null)
+            return;
+
+        var changedBy = string.IsNullOrWhiteSpace(currentUser?.DisplayName)
+            ? currentUser?.Username ?? "system"
+            : currentUser!.DisplayName;
+
+        var (success, rollbackMessage) = await ContestService.RollbackContestStageAsync(selectedContestId, changedBy, rollbackReason, rollbackWindowHours);
+        if (!success)
+        {
+            message = rollbackMessage;
+            isSuccess = false;
+            return;
+        }
+
+        selectedContest = await ContestService.GetContestAsync(selectedContestId);
+        autoStageSwitchEnabled = selectedContest?.AutoStageSwitchEnabled ?? false;
+        manualStage = selectedContest == null ? ContestStage.TopicReception : ContestService.GetContestStage(selectedContest);
+        message = rollbackMessage;
+        isSuccess = true;
+        await LoadTimelineAsync();
+    }
+
+    private async Task SwitchToManualModeAsync()
+    {
+        await SwitchModeAsync(false);
+    }
+
+    private async Task SwitchToAutoModeAsync()
+    {
+        await SwitchModeAsync(true);
+    }
+
+    private async Task SwitchModeAsync(bool enableAuto)
+    {
+        if (string.IsNullOrWhiteSpace(selectedContestId) || selectedContest == null)
+            return;
+
+        var changedBy = string.IsNullOrWhiteSpace(currentUser?.DisplayName)
+            ? currentUser?.Username ?? "system"
+            : currentUser!.DisplayName;
+
+        var ok = await ContestService.SetStageManagementModeAsync(selectedContestId, enableAuto, changedBy);
+        if (!ok)
+        {
+            message = "Не удалось переключить режим ведения конкурса.";
+            isSuccess = false;
+            return;
+        }
+
+        selectedContest = await ContestService.GetContestAsync(selectedContestId);
+        autoStageSwitchEnabled = selectedContest?.AutoStageSwitchEnabled ?? false;
+        manualStage = selectedContest == null ? ContestStage.TopicReception : ContestService.GetContestStage(selectedContest);
+
+        message = autoStageSwitchEnabled
+            ? "Включен автоматический режим ведения конкурса."
+            : "Включен ручной режим ведения конкурса.";
+        isSuccess = true;
+        await LoadTimelineAsync();
+    }
+
+    private async Task LoadTimelineAsync()
+    {
+        if (string.IsNullOrWhiteSpace(selectedContestId) || currentUser?.Role != UserRole.Admin)
+            return;
+
+        timelineEvents = await ContestService.GetContestStageTimelineAsync(selectedContestId, withManualAlarm: true);
     }
 
     private static List<string> ParseLines(string text)
@@ -537,5 +728,25 @@
 
         var kind = topicKinds.FirstOrDefault(k => k.Id == kindId.Value);
         return kind?.Name ?? string.Empty;
+    }
+
+    private static string GetTimelineTitle(ContestStageTimelineEvent ev)
+    {
+        return ev.EventType switch
+        {
+            "alarm" => "АЛАРМ",
+            "manual" => "Ручное переключение",
+            "rollback" => "Откат стадии",
+            "mode" => "Смена режима",
+            "auto" => "Автопереключение",
+            "fair-vote" => "Честное голосование",
+            "admin-auto-vote" => "Автоголосование администрации",
+            _ => "Событие"
+        };
+    }
+
+    private static string GetTimelineTextClass(string eventType)
+    {
+        return eventType == "alarm" ? "text-danger" : "text-dark";
     }
 }

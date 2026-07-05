@@ -53,6 +53,22 @@ public sealed class Contest
     public int? VotingClosedSwitchDayOfWeek { get; set; }
     public string VotingClosedSwitchTime { get; set; } = string.Empty;
 
+    // Окно, в течение которого разрешён откат на предыдущую стадию.
+    public int RollbackWindowHours { get; set; } = 5;
+
+    // Автоназначение тем на стадии открытия конкурса при отсутствии администрации.
+    public bool AutoTopicAssignmentEnabled { get; set; }
+    public int AutoTopicAssignmentTargetCount { get; set; } = 5;
+
+    // В стадии голосования система автоматически проставляет честные оценки.
+    public bool AutoFairVotingEnabled { get; set; }
+
+    // При закрытии голосования система проставляет административные оценки по среднему баллу.
+    public bool AutoAdminAverageVotingOnCloseEnabled { get; set; }
+
+    // Редактируемый блок "Похвала и дифирамбы" на странице объявления победителей.
+    public string WinnersPraiseText { get; set; } = string.Empty;
+
     public List<ContestTopic> Topics { get; set; } = new();
     public List<ContestWork> Works { get; set; } = new();
     public List<VoterSetting> Voters { get; set; } = new();

@@ -3,6 +3,7 @@
 @using Rhymers.Core.Models
 @inject ModerationWebService ModerationService
 @inject AuthorizationWebService AuthService
+@inject ContestService ContestService
 @inject NavigationManager NavManager
 
 @if (currentUser == null)
@@ -15,16 +16,6 @@
         </div>
     </div>
 }
-else if (currentUser.Role < UserRole.Author)
-{
-    <div class="container mt-4">
-        <div class="alert alert-warning" role="alert">
-            <h4 class="alert-heading">⛔ Доступ запрещён</h4>
-            <p>Для подачи работ требуется роль <strong>Автор</strong> или выше.</p>
-            <p>Ваша текущая роль: <strong>@GetRoleDisplay(currentUser.Role)</strong></p>
-        </div>
-    </div>
-}
 else
 {
     <div class="container mt-4">
@@ -34,6 +25,33 @@ else
             <strong>ℹ️ Статус:</strong> Здесь вы можете видеть статус ваших подданных работ.
         </div>
 
+        @if (sanctionNotifications.Count > 0)
+        {
+            <div class="card mb-3 border-danger">
+                <div class="card-header bg-danger-subtle">
+                    <strong>⚠️ Предупреждения о санкциях</strong>
+                </div>
+                <div class="card-body">
+                    @foreach (var note in sanctionNotifications)
+                    {
+                        <div class="alert @(note.IsRead ? "alert-secondary" : "alert-warning") mb-2">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <div><strong>@note.Title</strong></div>
+                                    <div>@note.Message</div>
+                                    <small class="text-muted">@note.CreatedAt.ToString("dd.MM.yyyy HH:mm")</small>
+                                </div>
+                                @if (!note.IsRead)
+                                {
+                                    <button class="btn btn-sm btn-outline-dark" @onclick="() => MarkNotificationReadAsync(note.Id)">Прочитано</button>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
         @if (isLoading)
         {
             <div class="spinner-border" role="status">
@@ -42,8 +60,16 @@ else
         }
         else if (authorSubmissions == null || authorSubmissions.Count == 0)
         {
-            <div class="alert alert-info">У вас нет подданных работ</div>
-            <a href="/submit-work" class="btn btn-primary">📝 Подать новую работу</a>
+            @if (currentUser.Role >= UserRole.Author)
+            {
+                <div class="alert alert-info">У вас нет подданных работ</div>
+                <a href="/submit-work" class="btn btn-primary">📝 Подать новую работу</a>
+            }
+            else
+            {
+                <div class="alert alert-info">Личный кабинет активен. Для вашей роли доступно голосование и уведомления.</div>
+                <a href="/voting" class="btn btn-primary">🗳 Перейти к голосованию</a>
+            }
         }
         else
         {
@@ -113,6 +139,7 @@ else
 @code {
     private User? currentUser;
     private List<WorkSubmission>? authorSubmissions;
+    private List<UserSanctionNotification> sanctionNotifications = new();
     private bool isLoading = false;
 
     protected override async Task OnInitializedAsync()
@@ -126,6 +153,10 @@ else
         {
             await LoadSubmissionsAsync();
         }
+        else if (firstRender && currentUser != null)
+        {
+            sanctionNotifications = await ContestService.GetUserSanctionNotificationsAsync(currentUser.Id);
+        }
     }
 
     private async Task LoadSubmissionsAsync()
@@ -136,12 +167,25 @@ else
             if (currentUser != null)
             {
                 authorSubmissions = await ModerationService.GetAuthorSubmissionsAsync(currentUser.Username);
+                sanctionNotifications = await ContestService.GetUserSanctionNotificationsAsync(currentUser.Id);
             }
         }
         finally
         {
             isLoading = false;
         }
+    }
+
+    private async Task MarkNotificationReadAsync(int notificationId)
+    {
+        if (currentUser == null)
+            return;
+
+        var ok = await ContestService.MarkUserNotificationAsReadAsync(notificationId, currentUser.Id);
+        if (!ok)
+            return;
+
+        sanctionNotifications = await ContestService.GetUserSanctionNotificationsAsync(currentUser.Id);
     }
 
     private string GetStatusHeaderClass(WorkStatus status) => status switch

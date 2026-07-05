@@ -1,0 +1,349 @@
+@page "/winners-announcement"
+@using Rhymers.Core.Models
+@using Rhymers.Web.Services
+@inject ContestService ContestService
+@inject AuthorizationWebService AuthService
+
+<div class="container mt-4">
+    <h1>Объявление победителей</h1>
+    <p class="text-muted">Торжественная церемония награждения: дипломы, грамоты, оригинальность и слова похвалы.</p>
+
+    @if (isLoading)
+    {
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Загрузка...</span>
+        </div>
+    }
+    else if (contest == null)
+    {
+        <div class="alert alert-info">Текущий конкурс не найден.</div>
+    }
+    else if (rows.Count == 0)
+    {
+        <div class="alert alert-secondary">Недостаточно данных для церемонии награждения.</div>
+    }
+    else
+    {
+        <div class="card mb-3 border-success">
+            <div class="card-body">
+                <h4 class="mb-1">@contest.Name</h4>
+                <div class="text-muted">Конкурс №@contest.Number</div>
+                <div class="mt-2">
+                    <span class="badge text-bg-success">Церемония награждения</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+            @foreach (var winner in podium)
+            {
+                <div class="col-lg-4">
+                    <div class="card h-100 shadow-sm @GetPodiumBorderClass(winner.Place)">
+                        <div class="card-header @GetPodiumHeaderClass(winner.Place)">
+                            <strong>@GetPlaceTitle(winner.Place)</strong>
+                        </div>
+                        <div class="card-body">
+                            <h5 class="card-title">@winner.Topic</h5>
+                            <div class="mb-1"><strong>Автор:</strong> @GetAuthorDisplay(winner.Author)</div>
+                            <div class="mb-1"><strong>Сумма баллов:</strong> @winner.TotalScore</div>
+                            <div class="mb-1"><strong>Средний:</strong> @winner.AverageScore.ToString("0.00")</div>
+                            <div class="text-success"><strong>Награда:</strong> Диплом @winner.Place степени</div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @if (originalityAward != null)
+        {
+            <div class="card mb-3 border-warning">
+                <div class="card-header bg-warning-subtle">
+                    <strong>Номинация: За оригинальность</strong>
+                </div>
+                <div class="card-body">
+                    <h5 class="mb-1">@originalityAward.Topic</h5>
+                    <div class="mb-1"><strong>Автор:</strong> @GetAuthorDisplay(originalityAward.Author)</div>
+                    <div class="text-muted">Выбрано по количеству высших оценок и устойчивому среднему баллу.</div>
+                </div>
+            </div>
+        }
+
+        @if (certificates.Count > 0)
+        {
+            <div class="card mb-3">
+                <div class="card-header">
+                    <strong>Грамоты участникам</strong>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        @foreach (var row in certificates)
+                        {
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span><strong>@row.Topic</strong> - @GetAuthorDisplay(row.Author)</span>
+                                <span class="text-primary">Грамота участника</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        }
+
+        <div class="card mb-3 border-info">
+            <div class="card-header bg-info-subtle">
+                <strong>Похвала и дифирамбы</strong>
+            </div>
+            <div class="card-body">
+                @if (canEditPraise)
+                {
+                    <div class="mb-3">
+                        <label class="form-label">Редактор текста церемонии</label>
+                        <textarea class="form-control" rows="6" @bind="editablePraiseText" placeholder="По одной строке: персональные похвалы и дифирамбы"></textarea>
+                        <div class="d-flex gap-2 mt-2">
+                            <button class="btn btn-sm btn-outline-primary" @onclick="SavePraiseTextAsync">Сохранить текст</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="ResetPraiseToAutoAsync">Сбросить на авто-генерацию</button>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(editorMessage))
+                        {
+                            <div class="mt-2 alert @(editorSuccess ? "alert-success" : "alert-warning") py-2">@editorMessage</div>
+                        }
+                    </div>
+                }
+
+                <ul class="mb-0">
+                    @foreach (var line in praiseLines)
+                    {
+                        <li>@line</li>
+                    }
+                </ul>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private Contest? contest;
+    private List<ResultRow> rows = new();
+    private List<ResultRow> podium = new();
+    private List<ResultRow> certificates = new();
+    private ResultRow? originalityAward;
+    private List<string> praiseLines = new();
+    private User? currentUser;
+    private bool canEditPraise;
+    private string editablePraiseText = string.Empty;
+    private string editorMessage = string.Empty;
+    private bool editorSuccess;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        canEditPraise = currentUser?.Role >= UserRole.Moderator;
+
+        contest = await ContestService.GetCurrentContestAsync();
+        if (contest == null)
+        {
+            isLoading = false;
+            return;
+        }
+
+        var submissions = await ContestService.GetApprovedWorkSubmissionsAsync(contest.Id);
+        var votes = await ContestService.GetContestVotesAsync(contest.Id);
+
+        rows = BuildRows(submissions, votes, contest.MaxVote);
+        podium = rows.Take(3).ToList();
+        certificates = rows.Skip(3).ToList();
+        originalityAward = BuildOriginalityAward(rows, podium);
+        editablePraiseText = contest.WinnersPraiseText ?? string.Empty;
+        praiseLines = BuildEffectivePraiseLines(rows, editablePraiseText);
+
+        isLoading = false;
+    }
+
+    private async Task SavePraiseTextAsync()
+    {
+        if (contest == null || !canEditPraise)
+            return;
+
+        var ok = await ContestService.SaveWinnersPraiseTextAsync(contest.Id, editablePraiseText);
+        if (!ok)
+        {
+            editorMessage = "Не удалось сохранить текст церемонии.";
+            editorSuccess = false;
+            return;
+        }
+
+        contest = await ContestService.GetContestAsync(contest.Id);
+        editablePraiseText = contest?.WinnersPraiseText ?? string.Empty;
+        praiseLines = BuildEffectivePraiseLines(rows, editablePraiseText);
+        editorMessage = "Текст похвалы сохранён.";
+        editorSuccess = true;
+    }
+
+    private async Task ResetPraiseToAutoAsync()
+    {
+        if (contest == null || !canEditPraise)
+            return;
+
+        editablePraiseText = string.Empty;
+        await SavePraiseTextAsync();
+    }
+
+    private static List<string> BuildEffectivePraiseLines(List<ResultRow> allRows, string customText)
+    {
+        var custom = ParsePraiseLines(customText);
+        if (custom.Count > 0)
+            return custom;
+
+        return BuildPraiseLines(allRows);
+    }
+
+    private static List<string> ParsePraiseLines(string text)
+    {
+        return (text ?? string.Empty)
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0)
+            .ToList();
+    }
+
+    private static List<ResultRow> BuildRows(List<WorkSubmission> submissions, List<ContestVote> votes, int maxVote)
+    {
+        var result = new List<ResultRow>();
+
+        foreach (var item in submissions.Select((value, index) => new { value, index }))
+        {
+            var submission = item.value;
+            var submissionVotes = votes.Where(v => v.SubmissionId == submission.Id).ToList();
+            var total = submissionVotes.Sum(v => v.Score);
+            var count = submissionVotes.Count;
+            var average = count == 0 ? 0 : (decimal)total / count;
+            var maxVoteCount = submissionVotes.Count(v => v.Score == maxVote);
+
+            result.Add(new ResultRow
+            {
+                SubmissionId = submission.Id,
+                DisplayNo = submission.Work.Number > 0 ? submission.Work.Number : item.index + 1,
+                Topic = string.IsNullOrWhiteSpace(submission.Work.Topic) ? "Без темы" : submission.Work.Topic,
+                Author = submission.Work.Author,
+                TotalScore = total,
+                VotesCount = count,
+                AverageScore = average,
+                MaxVoteCount = maxVoteCount
+            });
+        }
+
+        var ordered = result
+            .OrderByDescending(x => x.TotalScore)
+            .ThenByDescending(x => x.AverageScore)
+            .ThenBy(x => x.DisplayNo)
+            .ToList();
+
+        var place = 1;
+        foreach (var row in ordered)
+        {
+            row.Place = place;
+            place++;
+        }
+
+        return ordered;
+    }
+
+    private static ResultRow? BuildOriginalityAward(List<ResultRow> allRows, List<ResultRow> topRows)
+    {
+        var topIds = topRows.Select(x => x.SubmissionId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return allRows
+            .Where(r => !topIds.Contains(r.SubmissionId))
+            .OrderByDescending(r => r.MaxVoteCount)
+            .ThenByDescending(r => r.AverageScore)
+            .ThenBy(r => r.Place)
+            .FirstOrDefault();
+    }
+
+    private static List<string> BuildPraiseLines(List<ResultRow> allRows)
+    {
+        var lines = new List<string>();
+        if (allRows.Count == 0)
+            return lines;
+
+        lines.Add("Каждый участник сделал конкурс ярче и сильнее - это настоящий праздник поэзии.");
+
+        var leader = allRows.First();
+        lines.Add($"Лидер итоговой таблицы впечатлил уровнем исполнения: '{leader.Topic}'.");
+
+        var mostStable = allRows
+            .OrderByDescending(r => r.AverageScore)
+            .ThenBy(r => r.Place)
+            .First();
+        lines.Add($"Отдельная похвала за стабильное высокое качество: '{mostStable.Topic}'.");
+
+        if (allRows.Count > 3)
+        {
+            lines.Add("Благодарим всех авторов, получивших грамоты, за мастерство и смелость творческого поиска.");
+        }
+
+        lines.Add("Дифирамбы всем участникам: вы создали конкурс, к которому хочется возвращаться.");
+        return lines;
+    }
+
+    private string GetAuthorDisplay(string author)
+    {
+        if (contest == null)
+            return "автор скрыт";
+
+        var stage = ContestService.GetContestStage(contest);
+        var canRevealAuthors = stage is ContestStage.VotingClosed or ContestStage.Finished;
+        if (!canRevealAuthors)
+            return "автор скрыт до объявления результатов";
+
+        return string.IsNullOrWhiteSpace(author) ? "автор не указан" : author;
+    }
+
+    private static string GetPlaceTitle(int place)
+    {
+        return place switch
+        {
+            1 => "1 место",
+            2 => "2 место",
+            3 => "3 место",
+            _ => $"{place} место"
+        };
+    }
+
+    private static string GetPodiumHeaderClass(int place)
+    {
+        return place switch
+        {
+            1 => "bg-warning-subtle",
+            2 => "bg-secondary-subtle",
+            3 => "bg-danger-subtle",
+            _ => "bg-light"
+        };
+    }
+
+    private static string GetPodiumBorderClass(int place)
+    {
+        return place switch
+        {
+            1 => "border-warning",
+            2 => "border-secondary",
+            3 => "border-danger",
+            _ => string.Empty
+        };
+    }
+
+    private sealed class ResultRow
+    {
+        public string SubmissionId { get; set; } = string.Empty;
+        public int Place { get; set; }
+        public int DisplayNo { get; set; }
+        public string Topic { get; set; } = string.Empty;
+        public string Author { get; set; } = string.Empty;
+        public int TotalScore { get; set; }
+        public int VotesCount { get; set; }
+        public decimal AverageScore { get; set; }
+        public int MaxVoteCount { get; set; }
+    }
+}

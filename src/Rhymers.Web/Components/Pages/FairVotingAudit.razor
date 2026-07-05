@@ -1,0 +1,250 @@
+@page "/fair-voting-audit"
+@using Rhymers.Core.Models
+@using Rhymers.Web.Services
+@inject ContestService ContestService
+@inject AuthorizationWebService AuthService
+
+<div class="container mt-4">
+    <h1>Аудит честного голосования</h1>
+    <p class="text-muted">Сравнение человеческих оценок и системных автооценок FairVotingBot.</p>
+
+    @if (currentUser == null)
+    {
+        <div class="alert alert-warning">Нужна авторизация.</div>
+        return;
+    }
+
+    @if (currentUser.Role < UserRole.Moderator)
+    {
+        <div class="alert alert-danger">Доступно только модераторам и администраторам.</div>
+        return;
+    }
+
+    @if (isLoading)
+    {
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Загрузка...</span>
+        </div>
+    }
+    else if (contest == null)
+    {
+        <div class="alert alert-info">Текущий конкурс не найден.</div>
+    }
+    else
+    {
+        <div class="card mb-3">
+            <div class="card-body">
+                <h4 class="mb-1">@contest.Name</h4>
+                <div class="text-muted">Конкурс №@contest.Number</div>
+                <div class="mt-2 d-flex gap-2 flex-wrap">
+                    <span class="badge text-bg-secondary">@ContestService.GetContestStageTitle(ContestService.GetContestStage(contest))</span>
+                    <span class="badge @(contest.AutoFairVotingEnabled ? "text-bg-success" : "text-bg-warning")">
+                        @(contest.AutoFairVotingEnabled ? "Честное голосование включено" : "Честное голосование выключено")
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3 border-secondary-subtle">
+            <div class="card-body">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label">Порог отклонения</label>
+                        <input type="number" min="0" max="10" step="0.1" class="form-control" @bind="deviationThreshold" />
+                        <div class="btn-group btn-group-sm mt-2" role="group" aria-label="Preset threshold buttons">
+                            <button type="button" class="btn btn-outline-secondary" @onclick="() => SetThreshold(0.3m)">0.3</button>
+                            <button type="button" class="btn btn-outline-secondary" @onclick="() => SetThreshold(0.5m)">0.5</button>
+                            <button type="button" class="btn btn-outline-secondary" @onclick="() => SetThreshold(1.0m)">1.0</button>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="showOnlyDeviations" @bind="showOnlySignificantDeviations" />
+                            <label class="form-check-label" for="showOnlyDeviations">
+                                Показать только строки, где |разница| >= порога
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (visibleRows.Count == 0)
+        {
+            <div class="alert alert-secondary">Нет данных для аудита по текущему фильтру.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>№</th>
+                            <th>Тема</th>
+                            <th>Автор</th>
+                            <th>Голосов людей</th>
+                            <th>Средний (люди)</th>
+                            <th>Системный балл</th>
+                            <th>Разница</th>
+                            <th>Обновлено</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in visibleRows)
+                        {
+                            <tr>
+                                <td>@row.DisplayNo</td>
+                                <td>@row.Topic</td>
+                                <td>@GetAuthorDisplay(row.Author)</td>
+                                <td>@row.HumanVotesCount</td>
+                                <td>@(row.HumanAverage.HasValue ? row.HumanAverage.Value.ToString("0.00") : "-")</td>
+                                <td>@(row.SystemScore.HasValue ? row.SystemScore.Value.ToString() : "-")</td>
+                                <td>
+                                    @if (row.Delta.HasValue)
+                                    {
+                                        <span class="@GetDeltaClass(row.Delta.Value)">@row.Delta.Value.ToString("+0.00;-0.00;0.00")</span>
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
+                                </td>
+                                <td>@(row.SystemUpdatedAt.HasValue ? row.SystemUpdatedAt.Value.ToString("dd.MM.yyyy HH:mm") : "-")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private const string FairVotingSystemUserId = "system:fair-voting";
+
+    private User? currentUser;
+    private Contest? contest;
+    private List<AuditRow> rows = new();
+    private bool showOnlySignificantDeviations;
+    private decimal deviationThreshold = 0.5m;
+    private bool isLoading = true;
+
+    private List<AuditRow> visibleRows => BuildVisibleRows();
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        if (currentUser == null || currentUser.Role < UserRole.Moderator)
+        {
+            isLoading = false;
+            return;
+        }
+
+        contest = await ContestService.GetCurrentContestAsync();
+        if (contest == null)
+        {
+            isLoading = false;
+            return;
+        }
+
+        var submissions = await ContestService.GetApprovedWorkSubmissionsAsync(contest.Id);
+        var votes = await ContestService.GetContestVotesAsync(contest.Id);
+
+        rows = BuildAuditRows(submissions, votes);
+        isLoading = false;
+    }
+
+    private List<AuditRow> BuildVisibleRows()
+    {
+        if (!showOnlySignificantDeviations)
+            return rows;
+
+        var threshold = deviationThreshold < 0 ? 0 : deviationThreshold;
+        return rows
+            .Where(r => r.Delta.HasValue && Math.Abs(r.Delta.Value) >= threshold)
+            .ToList();
+    }
+
+    private void SetThreshold(decimal value)
+    {
+        deviationThreshold = value;
+    }
+
+    private static List<AuditRow> BuildAuditRows(List<WorkSubmission> submissions, List<ContestVote> votes)
+    {
+        var result = new List<AuditRow>();
+
+        foreach (var item in submissions.Select((value, index) => new { value, index }))
+        {
+            var submission = item.value;
+            var submissionVotes = votes.Where(v => v.SubmissionId == submission.Id).ToList();
+
+            var humanVotes = submissionVotes
+                .Where(v => !string.Equals(v.VoterUserId, FairVotingSystemUserId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            var humanCount = humanVotes.Count;
+            decimal? humanAverage = humanCount == 0 ? null : (decimal?)humanVotes.Average(v => v.Score);
+
+            var systemVote = submissionVotes
+                .Where(v => string.Equals(v.VoterUserId, FairVotingSystemUserId, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(v => v.UpdatedAt)
+                .FirstOrDefault();
+
+            decimal? systemScore = systemVote?.Score;
+            decimal? delta = (humanAverage.HasValue && systemScore.HasValue)
+                ? systemScore.Value - humanAverage.Value
+                : null;
+
+            result.Add(new AuditRow
+            {
+                DisplayNo = submission.Work.Number > 0 ? submission.Work.Number : item.index + 1,
+                Topic = string.IsNullOrWhiteSpace(submission.Work.Topic) ? "Без темы" : submission.Work.Topic,
+                Author = submission.Work.Author,
+                HumanVotesCount = humanCount,
+                HumanAverage = humanAverage,
+                SystemScore = systemScore,
+                Delta = delta,
+                SystemUpdatedAt = systemVote?.UpdatedAt
+            });
+        }
+
+        return result
+            .OrderBy(r => r.DisplayNo)
+            .ToList();
+    }
+
+    private string GetAuthorDisplay(string author)
+    {
+        if (contest == null)
+            return "автор скрыт";
+
+        var stage = ContestService.GetContestStage(contest);
+        var canRevealAuthors = stage is ContestStage.VotingClosed or ContestStage.Finished;
+        if (!canRevealAuthors)
+            return "автор скрыт до объявления результатов";
+
+        return string.IsNullOrWhiteSpace(author) ? "автор не указан" : author;
+    }
+
+    private static string GetDeltaClass(decimal delta)
+    {
+        if (delta > 0)
+            return "text-success fw-semibold";
+        if (delta < 0)
+            return "text-danger fw-semibold";
+        return "text-muted";
+    }
+
+    private sealed class AuditRow
+    {
+        public int DisplayNo { get; set; }
+        public string Topic { get; set; } = string.Empty;
+        public string Author { get; set; } = string.Empty;
+        public int HumanVotesCount { get; set; }
+        public decimal? HumanAverage { get; set; }
+        public decimal? SystemScore { get; set; }
+        public decimal? Delta { get; set; }
+        public DateTime? SystemUpdatedAt { get; set; }
+    }
+}

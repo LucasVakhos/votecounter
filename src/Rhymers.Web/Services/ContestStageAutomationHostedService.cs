@@ -24,9 +24,15 @@ public sealed class ContestStageAutomationHostedService : BackgroundService
                 using var scope = _scopeFactory.CreateScope();
                 var contestService = scope.ServiceProvider.GetRequiredService<ContestService>();
                 var changed = await contestService.ApplyAutomaticStageSwitchesAsync();
+                var autoTopicsChanged = await contestService.ApplyAutomaticTopicAssignmentAsync();
+                var fairVotingChanged = await contestService.ApplyAutomaticFairVotingAsync();
 
                 if (changed > 0)
                     _logger.LogInformation("Automatic stage switching updated {Count} contest(s).", changed);
+                if (autoTopicsChanged > 0)
+                    _logger.LogInformation("Automatic topic assignment updated {Count} contest(s).", autoTopicsChanged);
+                if (fairVotingChanged > 0)
+                    _logger.LogInformation("Automatic fair voting updated {Count} contest(s).", fairVotingChanged);
             }
             catch (Exception ex)
             {

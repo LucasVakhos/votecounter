@@ -168,6 +168,8 @@ public sealed class PersistenceService
         _context.Topics.RemoveRange(_context.Topics);
         _context.TopicKinds.RemoveRange(_context.TopicKinds);
         _context.ContestVotes.RemoveRange(_context.ContestVotes);
+        _context.ContestStageTimelineEvents.RemoveRange(_context.ContestStageTimelineEvents);
+        _context.UserSanctionNotifications.RemoveRange(_context.UserSanctionNotifications);
         _context.Voters.RemoveRange(_context.Voters);
 
         await _context.SaveChangesAsync();
@@ -243,6 +245,12 @@ public sealed class PersistenceService
         await EnsureColumnAsync("Contests", "VotingOpenSwitchTime", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync("Contests", "VotingClosedSwitchDayOfWeek", "INTEGER NULL");
         await EnsureColumnAsync("Contests", "VotingClosedSwitchTime", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync("Contests", "RollbackWindowHours", "INTEGER NOT NULL DEFAULT 5");
+        await EnsureColumnAsync("Contests", "AutoTopicAssignmentEnabled", "INTEGER NOT NULL DEFAULT 0");
+        await EnsureColumnAsync("Contests", "AutoTopicAssignmentTargetCount", "INTEGER NOT NULL DEFAULT 5");
+        await EnsureColumnAsync("Contests", "AutoFairVotingEnabled", "INTEGER NOT NULL DEFAULT 0");
+        await EnsureColumnAsync("Contests", "AutoAdminAverageVotingOnCloseEnabled", "INTEGER NOT NULL DEFAULT 0");
+        await EnsureColumnAsync("Contests", "WinnersPraiseText", "TEXT NOT NULL DEFAULT ''");
 
         await _context.Database.ExecuteSqlRawAsync(@"
             CREATE TABLE IF NOT EXISTS ContestTopics(
@@ -274,6 +282,34 @@ public sealed class PersistenceService
                 UpdatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY(ContestId, SubmissionId, VoterUserId)
             );");
+
+        await _context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS ContestStageTimelineEvents(
+                Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                ContestId TEXT NOT NULL,
+                EventType TEXT NOT NULL,
+                StageFrom INTEGER NOT NULL,
+                StageTo INTEGER NOT NULL,
+                CreatedBy TEXT NOT NULL DEFAULT '',
+                Message TEXT NOT NULL DEFAULT '',
+                AlarmKey TEXT NOT NULL DEFAULT '',
+                CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );");
+
+        await _context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS UserSanctionNotifications(
+                Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                UserId TEXT NOT NULL,
+                Username TEXT NOT NULL,
+                Title TEXT NOT NULL,
+                Message TEXT NOT NULL,
+                IsRead INTEGER NOT NULL DEFAULT 0,
+                CreatedBy TEXT NOT NULL DEFAULT '',
+                CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ReadAt TEXT NULL
+            );");
+
+        await EnsureColumnAsync("ContestStageTimelineEvents", "AlarmKey", "TEXT NOT NULL DEFAULT ''");
 
         await EnsureColumnAsync("ContestTopics", "TopicKindId", "INTEGER NULL");
         await EnsureColumnAsync("ContestTopics", "ProposedBy", "TEXT NOT NULL DEFAULT ''");

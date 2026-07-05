@@ -20,6 +20,8 @@ public sealed class RhymersDbContext : DbContext
     public DbSet<ContestTopic> Topics { get; set; } = null!;
     public DbSet<TopicKind> TopicKinds { get; set; } = null!;
     public DbSet<ContestVote> ContestVotes { get; set; } = null!;
+    public DbSet<ContestStageTimelineEvent> ContestStageTimelineEvents { get; set; } = null!;
+    public DbSet<UserSanctionNotification> UserSanctionNotifications { get; set; } = null!;
     public DbSet<VoterSetting> Voters { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -53,6 +55,12 @@ public sealed class RhymersDbContext : DbContext
             entity.Property(c => c.WorkReceptionSwitchTime).HasMaxLength(5);
             entity.Property(c => c.VotingOpenSwitchTime).HasMaxLength(5);
             entity.Property(c => c.VotingClosedSwitchTime).HasMaxLength(5);
+            entity.Property(c => c.RollbackWindowHours).HasDefaultValue(5);
+            entity.Property(c => c.AutoTopicAssignmentEnabled).HasDefaultValue(false);
+            entity.Property(c => c.AutoTopicAssignmentTargetCount).HasDefaultValue(5);
+            entity.Property(c => c.AutoFairVotingEnabled).HasDefaultValue(false);
+            entity.Property(c => c.AutoAdminAverageVotingOnCloseEnabled).HasDefaultValue(false);
+            entity.Property(c => c.WinnersPraiseText).HasMaxLength(4000);
             entity.Property(c => c.IsActive).HasDefaultValue(true);
             entity.Property(c => c.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
@@ -118,6 +126,38 @@ public sealed class RhymersDbContext : DbContext
             entity.Property(v => v.Comment).HasMaxLength(512);
             entity.Property(v => v.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.HasIndex(v => v.ContestId);
+        });
+
+        modelBuilder.Entity<ContestStageTimelineEvent>(entity =>
+        {
+            entity.ToTable("ContestStageTimelineEvents");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).ValueGeneratedOnAdd();
+            entity.Property(x => x.ContestId).HasMaxLength(256).IsRequired();
+            entity.Property(x => x.EventType).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.CreatedBy).HasMaxLength(256);
+            entity.Property(x => x.Message).HasMaxLength(1024);
+            entity.Property(x => x.AlarmKey).HasMaxLength(256);
+            entity.Property(x => x.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasIndex(x => x.ContestId);
+            entity.HasIndex(x => x.AlarmKey);
+        });
+
+        modelBuilder.Entity<UserSanctionNotification>(entity =>
+        {
+            entity.ToTable("UserSanctionNotifications");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).ValueGeneratedOnAdd();
+            entity.Property(x => x.UserId).HasMaxLength(256).IsRequired();
+            entity.Property(x => x.Username).HasMaxLength(256).IsRequired();
+            entity.Property(x => x.Title).HasMaxLength(256).IsRequired();
+            entity.Property(x => x.Message).HasMaxLength(2000).IsRequired();
+            entity.Property(x => x.IsRead).HasDefaultValue(false);
+            entity.Property(x => x.CreatedBy).HasMaxLength(256).IsRequired();
+            entity.Property(x => x.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasIndex(x => x.UserId);
+            entity.HasIndex(x => x.IsRead);
+            entity.HasIndex(x => x.CreatedAt);
         });
 
         // VoterSetting конфигурация

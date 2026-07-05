@@ -287,6 +287,109 @@ else
                         </div>
                     </div>
                 </div>
+
+                <div class="row mt-4">
+                    <div class="col-md-12">
+                        <div class="card border-danger-subtle">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">⚠️ Рассылка предупреждения о санкциях</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3 mb-3">
+                                    <div class="col-lg-6">
+                                        <label class="form-label">Конкурс для автоанализа</label>
+                                        <select class="form-select mb-2" @bind="sanctionsContestId">
+                                            <option value="">-- выберите конкурс --</option>
+                                            @if (contests != null)
+                                            {
+                                                @foreach (var contest in contests)
+                                                {
+                                                    <option value="@contest.Id">№@contest.Number - @contest.Name</option>
+                                                }
+                                            }
+                                        </select>
+                                        <div class="row g-2 mb-2">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Мин. риск для авторассылки</label>
+                                                <input type="number" min="0" max="10" step="0.1" class="form-control" @bind="sanctionsAutoRiskThreshold" />
+                                                <div class="btn-group btn-group-sm mt-2" role="group" aria-label="Risk threshold presets">
+                                                    <button type="button" class="btn btn-outline-secondary" @onclick="() => SetSanctionsRiskThreshold(1.0m)">1.0</button>
+                                                    <button type="button" class="btn btn-outline-secondary" @onclick="() => SetSanctionsRiskThreshold(1.5m)">1.5</button>
+                                                    <button type="button" class="btn btn-outline-secondary" @onclick="() => SetSanctionsRiskThreshold(2.0m)">2.0</button>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6 d-flex align-items-end">
+                                                <div class="form-check mb-1">
+                                                    <input class="form-check-input" type="checkbox" id="autoSelectByRisk" @bind="autoSelectOnlyByRiskThreshold" />
+                                                    <label class="form-check-label" for="autoSelectByRisk">Автодобавлять только выше порога</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button class="btn btn-outline-danger btn-sm" @onclick="AnalyzeSuspectsAsync" disabled="@string.IsNullOrWhiteSpace(sanctionsContestId)">Найти пойманных анализом</button>
+
+                                        @if (suspects.Count > 0)
+                                        {
+                                            <div class="mt-2">
+                                                <strong>Пойманные автоматически:</strong>
+                                                @foreach (var suspect in suspects)
+                                                {
+                                                    <div class="form-check mt-1">
+                                                        <input class="form-check-input" type="checkbox" id="suspect_@suspect.UserId" checked="@IsSanctionsRecipientSelected(suspect.UserId)" @onchange="e => OnSanctionsRecipientToggleChanged(suspect.UserId, e)" />
+                                                        <label class="form-check-label" for="suspect_@suspect.UserId">
+                                                            @suspect.DisplayName (@suspect.Username) - риск: @suspect.RiskScore.ToString("0.00")<br />
+                                                            <small class="text-muted">@suspect.Reason</small>
+                                                        </label>
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+
+                                    <div class="col-lg-6">
+                                        <strong>Или выберите получателей вручную:</strong>
+                                        <div class="border rounded p-2 mt-2" style="max-height: 220px; overflow-y: auto;">
+                                            @if (allUsers != null)
+                                            {
+                                                @foreach (var user in allUsers.Where(u => u.IsActive && u.Role >= UserRole.Reader).OrderBy(u => u.DisplayName))
+                                                {
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" id="recipient_@user.Id" checked="@IsSanctionsRecipientSelected(user.Id)" @onchange="e => OnSanctionsRecipientToggleChanged(user.Id, e)" />
+                                                        <label class="form-check-label" for="recipient_@user.Id">@user.DisplayName (@user.Username)</label>
+                                                    </div>
+                                                }
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <label class="form-label">Текст предупреждения в личные кабинеты</label>
+                                <textarea class="form-control mb-2" rows="4" @bind="sanctionsWarningMessage"></textarea>
+                                <div class="form-text mb-2">Подстановки: {username}, {reason}, {risk}</div>
+                                <div class="d-flex gap-2 mb-3">
+                                    <button class="btn btn-outline-secondary" @onclick="PreviewSanctionsMessageAsync" disabled="@(selectedSanctionsRecipientIds.Count == 0)">Предпросмотр</button>
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(sanctionsPreviewText))
+                                {
+                                    <div class="alert alert-secondary mb-3">
+                                        <strong>Предпросмотр:</strong><br />
+                                        @sanctionsPreviewText
+                                    </div>
+                                }
+
+                                <div class="form-text mb-3">Предупреждение отправится только выбранным получателям. При повторном нарушении в тексте указаны санкции.</div>
+                                <button class="btn btn-danger" @onclick="SendSanctionsBroadcastAsync" disabled="@(selectedSanctionsRecipientIds.Count == 0)">Отправить выбранным (@selectedSanctionsRecipientIds.Count)</button>
+
+                                @if (!string.IsNullOrWhiteSpace(sanctionsBroadcastResult))
+                                {
+                                    <div class="alert @(sanctionsBroadcastSuccess ? "alert-success" : "alert-warning") mt-3 mb-0">
+                                        @sanctionsBroadcastResult
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -303,6 +406,15 @@ else
 
     private string selectedAuthorUsername = "";
     private List<string> selectedContestIds = new();
+    private string sanctionsContestId = string.Empty;
+    private List<UnfairVotingSuspect> suspects = new();
+    private List<string> selectedSanctionsRecipientIds = new();
+    private decimal sanctionsAutoRiskThreshold = 1.5m;
+    private bool autoSelectOnlyByRiskThreshold = true;
+    private string sanctionsWarningMessage = "Пользователь {username}, по результатам анализа зафиксированы признаки недобросовестной конкуренции: {reason}. Текущий риск: {risk}. Если нарушение повторится, будут применены санкции: аннулирование голосов, дисквалификация работы и ограничение участия.";
+    private string sanctionsBroadcastResult = string.Empty;
+    private string sanctionsPreviewText = string.Empty;
+    private bool sanctionsBroadcastSuccess;
 
     protected override async Task OnInitializedAsync()
     {
@@ -326,6 +438,7 @@ else
             
             var contestList = (await ContestService.GetContestsAsync()).ToList();
             contests = contestList;
+            sanctionsContestId = contestList.FirstOrDefault()?.Id ?? string.Empty;
         }
         finally
         {
@@ -372,6 +485,95 @@ else
         selectedAuthorUsername = "";
         selectedContestIds.Clear();
         await LoadDataAsync();
+    }
+
+    private async Task SendSanctionsBroadcastAsync()
+    {
+        if (currentUser == null)
+            return;
+
+        var sent = await ContestService.SendSanctionsWarningToUsersPersonalizedAsync(currentUser.Username, sanctionsWarningMessage, selectedSanctionsRecipientIds, suspects);
+        sanctionsBroadcastSuccess = sent > 0;
+        sanctionsBroadcastResult = sent > 0
+            ? $"Предупреждение отправлено. Получателей: {sent}."
+            : "Нет доступных получателей для рассылки.";
+    }
+
+    private async Task AnalyzeSuspectsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(sanctionsContestId))
+            return;
+
+        suspects = await ContestService.DetectPotentialUnfairVotingAsync(sanctionsContestId);
+        var threshold = sanctionsAutoRiskThreshold < 0 ? 0 : sanctionsAutoRiskThreshold;
+        var autoSelected = 0;
+        foreach (var suspect in suspects)
+        {
+            if (autoSelectOnlyByRiskThreshold && suspect.RiskScore < threshold)
+                continue;
+
+            if (!selectedSanctionsRecipientIds.Any(x => string.Equals(x, suspect.UserId, StringComparison.OrdinalIgnoreCase)))
+            {
+                selectedSanctionsRecipientIds.Add(suspect.UserId);
+                autoSelected++;
+            }
+        }
+
+        sanctionsBroadcastResult = suspects.Count > 0
+            ? $"Автоанализ нашёл подозрительных пользователей: {suspects.Count}. Автодобавлено в получатели: {autoSelected} (порог риска: {threshold:0.0})."
+            : "По текущему конкурсу автоанализ не выявил подозрительных пользователей.";
+        sanctionsBroadcastSuccess = suspects.Count > 0;
+    }
+
+    private async Task PreviewSanctionsMessageAsync()
+    {
+        if (selectedSanctionsRecipientIds.Count == 0)
+        {
+            sanctionsPreviewText = string.Empty;
+            return;
+        }
+
+        var previewUserId = selectedSanctionsRecipientIds[0];
+        var previewUser = allUsers?.FirstOrDefault(u => string.Equals(u.Id, previewUserId, StringComparison.OrdinalIgnoreCase));
+        if (previewUser == null)
+        {
+            sanctionsPreviewText = string.Empty;
+            return;
+        }
+
+        var suspect = suspects.FirstOrDefault(s => string.Equals(s.UserId, previewUser.Id, StringComparison.OrdinalIgnoreCase));
+        var reason = suspect?.Reason ?? "подозрительная активность по результатам проверки";
+        var risk = (suspect?.RiskScore ?? 0m).ToString("0.00");
+
+        sanctionsPreviewText = (sanctionsWarningMessage ?? string.Empty)
+            .Replace("{username}", previewUser.Username, StringComparison.OrdinalIgnoreCase)
+            .Replace("{reason}", reason, StringComparison.OrdinalIgnoreCase)
+            .Replace("{risk}", risk, StringComparison.OrdinalIgnoreCase);
+
+        await Task.CompletedTask;
+    }
+
+    private void OnSanctionsRecipientToggleChanged(string userId, ChangeEventArgs e)
+    {
+        var isChecked = e.Value is bool flag && flag;
+        if (isChecked)
+        {
+            if (!selectedSanctionsRecipientIds.Any(x => string.Equals(x, userId, StringComparison.OrdinalIgnoreCase)))
+                selectedSanctionsRecipientIds.Add(userId);
+            return;
+        }
+
+        selectedSanctionsRecipientIds.RemoveAll(x => string.Equals(x, userId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool IsSanctionsRecipientSelected(string userId)
+    {
+        return selectedSanctionsRecipientIds.Any(x => string.Equals(x, userId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void SetSanctionsRiskThreshold(decimal value)
+    {
+        sanctionsAutoRiskThreshold = value;
     }
 
     private void ToggleContest(string contestId, bool isChecked)
