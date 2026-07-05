@@ -235,10 +235,14 @@ public sealed class PersistenceService
     {
         await EnsureColumnAsync("Contests", "MaxTopicsCount", "INTEGER NOT NULL DEFAULT 0");
         await EnsureColumnAsync("Contests", "AutoStageSwitchEnabled", "INTEGER NOT NULL DEFAULT 0");
-        await EnsureColumnAsync("Contests", "TopicReceptionEndsAt", "TEXT NULL");
-        await EnsureColumnAsync("Contests", "WorkReceptionEndsAt", "TEXT NULL");
-        await EnsureColumnAsync("Contests", "VotingOpenEndsAt", "TEXT NULL");
-        await EnsureColumnAsync("Contests", "VotingClosedEndsAt", "TEXT NULL");
+        await EnsureColumnAsync("Contests", "TopicReceptionSwitchDayOfWeek", "INTEGER NULL");
+        await EnsureColumnAsync("Contests", "TopicReceptionSwitchTime", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync("Contests", "WorkReceptionSwitchDayOfWeek", "INTEGER NULL");
+        await EnsureColumnAsync("Contests", "WorkReceptionSwitchTime", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync("Contests", "VotingOpenSwitchDayOfWeek", "INTEGER NULL");
+        await EnsureColumnAsync("Contests", "VotingOpenSwitchTime", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync("Contests", "VotingClosedSwitchDayOfWeek", "INTEGER NULL");
+        await EnsureColumnAsync("Contests", "VotingClosedSwitchTime", "TEXT NOT NULL DEFAULT ''");
 
         await _context.Database.ExecuteSqlRawAsync(@"
             CREATE TABLE IF NOT EXISTS ContestTopics(

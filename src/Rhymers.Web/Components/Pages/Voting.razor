@@ -27,6 +27,14 @@
         return;
     }
 
+    @if (!isVotingOpen)
+    {
+        <div class="alert alert-warning">
+            Голосование доступно только на стадии "@ContestService.GetContestStageTitle(ContestStage.VotingOpen)".
+            Текущая стадия: <strong>@ContestService.GetContestStageTitle(ContestService.GetContestStage(currentContest))</strong>
+        </div>
+    }
+
     <div class="card mb-3">
         <div class="card-body">
             <h4 class="mb-1">@currentContest.Name</h4>
@@ -68,18 +76,18 @@
                     <div class="row g-2">
                         <div class="col-md-3">
                             <label class="form-label">Оценка</label>
-                            <input type="number" class="form-control" min="0" max="@maxAllowedScore" @bind="vote.Score" />
+                            <input type="number" class="form-control" min="0" max="@maxAllowedScore" @bind="vote.Score" disabled="@(!isVotingOpen)" />
                         </div>
                         <div class="col-md-9">
                             <label class="form-label">Краткий комментарий</label>
-                            <input type="text" maxlength="280" class="form-control" @bind="vote.Comment" placeholder="Комментарий виден только вам" />
+                            <input type="text" maxlength="280" class="form-control" @bind="vote.Comment" placeholder="Комментарий виден только вам" disabled="@(!isVotingOpen)" />
                         </div>
                     </div>
                 </div>
             </div>
         }
 
-        <button class="btn btn-success" @onclick="SaveVotesAsync">Сохранить голоса</button>
+        <button class="btn btn-success" @onclick="SaveVotesAsync" disabled="@(!isVotingOpen)">Сохранить голоса</button>
     }
 </div>
 
@@ -91,6 +99,7 @@
     private int maxAllowedScore = 10;
     private string message = string.Empty;
     private bool isSuccess;
+    private bool isVotingOpen;
 
     protected override async Task OnInitializedAsync()
     {
@@ -101,6 +110,8 @@
         currentContest = await ContestService.GetCurrentContestAsync();
         if (currentContest == null)
             return;
+
+        isVotingOpen = ContestService.GetContestStage(currentContest) == ContestStage.VotingOpen;
 
         maxAllowedScore = currentContest.MaxVote > 0 ? currentContest.MaxVote : 10;
         works = await ContestService.GetApprovedWorkSubmissionsAsync(currentContest.Id);
@@ -146,6 +157,13 @@
     {
         if (currentContest == null || currentUser == null)
             return;
+
+        if (!isVotingOpen)
+        {
+            message = "Сохранение голосов доступно только на стадии открытого голосования.";
+            isSuccess = false;
+            return;
+        }
 
         foreach (var value in voteForm.Values)
         {

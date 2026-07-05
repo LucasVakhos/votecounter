@@ -182,20 +182,28 @@ public class ContestService
     public async Task<bool> SaveStageAutomationSettingsAsync(
         string contestId,
         bool autoStageSwitchEnabled,
-        DateTime? topicReceptionEndsAt,
-        DateTime? workReceptionEndsAt,
-        DateTime? votingOpenEndsAt,
-        DateTime? votingClosedEndsAt)
+        int? topicReceptionSwitchDayOfWeek,
+        string topicReceptionSwitchTime,
+        int? workReceptionSwitchDayOfWeek,
+        string workReceptionSwitchTime,
+        int? votingOpenSwitchDayOfWeek,
+        string votingOpenSwitchTime,
+        int? votingClosedSwitchDayOfWeek,
+        string votingClosedSwitchTime)
     {
         var contest = await _context.Contests.FirstOrDefaultAsync(c => c.Id == contestId);
         if (contest == null)
             return false;
 
         contest.AutoStageSwitchEnabled = autoStageSwitchEnabled;
-        contest.TopicReceptionEndsAt = topicReceptionEndsAt;
-        contest.WorkReceptionEndsAt = workReceptionEndsAt;
-        contest.VotingOpenEndsAt = votingOpenEndsAt;
-        contest.VotingClosedEndsAt = votingClosedEndsAt;
+        contest.TopicReceptionSwitchDayOfWeek = NormalizeDayOfWeek(topicReceptionSwitchDayOfWeek);
+        contest.TopicReceptionSwitchTime = NormalizeSwitchTime(topicReceptionSwitchTime);
+        contest.WorkReceptionSwitchDayOfWeek = NormalizeDayOfWeek(workReceptionSwitchDayOfWeek);
+        contest.WorkReceptionSwitchTime = NormalizeSwitchTime(workReceptionSwitchTime);
+        contest.VotingOpenSwitchDayOfWeek = NormalizeDayOfWeek(votingOpenSwitchDayOfWeek);
+        contest.VotingOpenSwitchTime = NormalizeSwitchTime(votingOpenSwitchTime);
+        contest.VotingClosedSwitchDayOfWeek = NormalizeDayOfWeek(votingClosedSwitchDayOfWeek);
+        contest.VotingClosedSwitchTime = NormalizeSwitchTime(votingClosedSwitchTime);
         contest.UpdatedAt = DateTime.Now;
 
         await _context.SaveChangesAsync();
@@ -544,18 +552,27 @@ public class ContestService
     private static ContestStage GetAutoStageForMoment(Contest contest, DateTime now)
     {
         var stage = GetContestStage(contest);
+        var stageAnchor = contest.StageUpdatedAt == default ? contest.StartedAt : contest.StageUpdatedAt;
 
         while (true)
         {
             var next = stage switch
             {
-                ContestStage.TopicReception when contest.TopicReceptionEndsAt.HasValue && now >= contest.TopicReceptionEndsAt.Value
+                ContestStage.TopicReception when
+                    TryGetScheduledSwitchMoment(stageAnchor, contest.TopicReceptionSwitchDayOfWeek, contest.TopicReceptionSwitchTime, out var topicSwitch) &&
+                    now >= topicSwitch
                     => ContestStage.WorkReception,
-                ContestStage.WorkReception when contest.WorkReceptionEndsAt.HasValue && now >= contest.WorkReceptionEndsAt.Value
+                ContestStage.WorkReception when
+                    TryGetScheduledSwitchMoment(stageAnchor, contest.WorkReceptionSwitchDayOfWeek, contest.WorkReceptionSwitchTime, out var workSwitch) &&
+                    now >= workSwitch
                     => ContestStage.VotingOpen,
-                ContestStage.VotingOpen when contest.VotingOpenEndsAt.HasValue && now >= contest.VotingOpenEndsAt.Value
+                ContestStage.VotingOpen when
+                    TryGetScheduledSwitchMoment(stageAnchor, contest.VotingOpenSwitchDayOfWeek, contest.VotingOpenSwitchTime, out var votingOpenSwitch) &&
+                    now >= votingOpenSwitch
                     => ContestStage.VotingClosed,
-                ContestStage.VotingClosed when contest.VotingClosedEndsAt.HasValue && now >= contest.VotingClosedEndsAt.Value
+                ContestStage.VotingClosed when
+                    TryGetScheduledSwitchMoment(stageAnchor, contest.VotingClosedSwitchDayOfWeek, contest.VotingClosedSwitchTime, out var votingClosedSwitch) &&
+                    now >= votingClosedSwitch
                     => ContestStage.Finished,
                 _ => stage
             };
@@ -564,7 +581,50 @@ public class ContestService
                 return stage;
 
             stage = next;
+            stageAnchor = now;
         }
+    }
+
+    private static int? NormalizeDayOfWeek(int? dayOfWeek)
+    {
+        if (!dayOfWeek.HasValue)
+            return null;
+
+        return dayOfWeek.Value is >= 0 and <= 6 ? dayOfWeek : null;
+    }
+
+    private static string NormalizeSwitchTime(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return TimeSpan.TryParse(value, out var parsed)
+            ? $"{parsed.Hours:D2}:{parsed.Minutes:D2}"
+            : string.Empty;
+    }
+
+    private static bool TryGetScheduledSwitchMoment(DateTime anchor, int? dayOfWeek, string? timeText, out DateTime scheduled)
+    {
+        scheduled = default;
+        if (!dayOfWeek.HasValue || string.IsNullOrWhiteSpace(timeText))
+            return false;
+
+        if (!TimeSpan.TryParse(timeText, out var time))
+            return false;
+
+        var targetDay = dayOfWeek.Value;
+        if (targetDay is < 0 or > 6)
+            return false;
+
+        var anchorDate = anchor.Date;
+        var delta = (targetDay - (int)anchorDate.DayOfWeek + 7) % 7;
+        var scheduledDate = anchorDate.AddDays(delta);
+        var candidate = scheduledDate.Add(time);
+        if (candidate < anchor)
+            candidate = candidate.AddDays(7);
+
+        scheduled = candidate;
+        return true;
     }
 
     private static string NormalizeKindName(string? value)

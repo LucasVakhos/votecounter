@@ -49,6 +49,10 @@ public sealed class RhymersDbContext : DbContext
             entity.Property(c => c.Name).HasMaxLength(256).IsRequired();
             entity.Property(c => c.MaxTopicsCount).HasDefaultValue(0);
             entity.Property(c => c.AutoStageSwitchEnabled).HasDefaultValue(false);
+            entity.Property(c => c.TopicReceptionSwitchTime).HasMaxLength(5);
+            entity.Property(c => c.WorkReceptionSwitchTime).HasMaxLength(5);
+            entity.Property(c => c.VotingOpenSwitchTime).HasMaxLength(5);
+            entity.Property(c => c.VotingClosedSwitchTime).HasMaxLength(5);
             entity.Property(c => c.IsActive).HasDefaultValue(true);
             entity.Property(c => c.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 

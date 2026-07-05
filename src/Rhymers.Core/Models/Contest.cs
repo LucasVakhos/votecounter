@@ -43,11 +43,15 @@ public sealed class Contest
     // true = стадии переключаются автоматически по расписанию.
     public bool AutoStageSwitchEnabled { get; set; }
 
-    // Моменты завершения стадий.
-    public DateTime? TopicReceptionEndsAt { get; set; }
-    public DateTime? WorkReceptionEndsAt { get; set; }
-    public DateTime? VotingOpenEndsAt { get; set; }
-    public DateTime? VotingClosedEndsAt { get; set; }
+    // Расписание завершения стадий (день недели + время HH:mm).
+    public int? TopicReceptionSwitchDayOfWeek { get; set; }
+    public string TopicReceptionSwitchTime { get; set; } = string.Empty;
+    public int? WorkReceptionSwitchDayOfWeek { get; set; }
+    public string WorkReceptionSwitchTime { get; set; } = string.Empty;
+    public int? VotingOpenSwitchDayOfWeek { get; set; }
+    public string VotingOpenSwitchTime { get; set; } = string.Empty;
+    public int? VotingClosedSwitchDayOfWeek { get; set; }
+    public string VotingClosedSwitchTime { get; set; } = string.Empty;
 
     public List<ContestTopic> Topics { get; set; } = new();
     public List<ContestWork> Works { get; set; } = new();

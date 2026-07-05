@@ -110,25 +110,65 @@
 
                 <div class="form-check form-switch mb-3">
                     <input class="form-check-input" type="checkbox" @bind="autoStageSwitchEnabled" id="autoStageSwitch" />
-                    <label class="form-check-label" for="autoStageSwitch">Автоматическое переключение по времени</label>
+                    <label class="form-check-label" for="autoStageSwitch">Автоматическое переключение по расписанию (день недели + время)</label>
                 </div>
 
                 <div class="row g-2">
-                    <div class="col-md-6">
-                        <label class="form-label">До окончания приема тем</label>
-                        <InputDate class="form-control" @bind-Value="topicReceptionEndsAt" Type="InputDateType.DateTimeLocal" />
+                    <div class="col-md-3">
+                        <label class="form-label">Темы: день</label>
+                        <select class="form-select" @bind="topicReceptionSwitchDayOfWeek">
+                            <option value="">--</option>
+                            @foreach (var day in weekDays)
+                            {
+                                <option value="@day.Value">@day.Label</option>
+                            }
+                        </select>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label">До окончания приема работ</label>
-                        <InputDate class="form-control" @bind-Value="workReceptionEndsAt" Type="InputDateType.DateTimeLocal" />
+                    <div class="col-md-3">
+                        <label class="form-label">Темы: время</label>
+                        <input type="text" class="form-control" @bind="topicReceptionSwitchTime" placeholder="HH:mm" />
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label">До окончания открытого голосования</label>
-                        <InputDate class="form-control" @bind-Value="votingOpenEndsAt" Type="InputDateType.DateTimeLocal" />
+                    <div class="col-md-3">
+                        <label class="form-label">Работы: день</label>
+                        <select class="form-select" @bind="workReceptionSwitchDayOfWeek">
+                            <option value="">--</option>
+                            @foreach (var day in weekDays)
+                            {
+                                <option value="@day.Value">@day.Label</option>
+                            }
+                        </select>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label">До закрытия итоговой стадии</label>
-                        <InputDate class="form-control" @bind-Value="votingClosedEndsAt" Type="InputDateType.DateTimeLocal" />
+                    <div class="col-md-3">
+                        <label class="form-label">Работы: время</label>
+                        <input type="text" class="form-control" @bind="workReceptionSwitchTime" placeholder="HH:mm" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Голосование: день</label>
+                        <select class="form-select" @bind="votingOpenSwitchDayOfWeek">
+                            <option value="">--</option>
+                            @foreach (var day in weekDays)
+                            {
+                                <option value="@day.Value">@day.Label</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Голосование: время</label>
+                        <input type="text" class="form-control" @bind="votingOpenSwitchTime" placeholder="HH:mm" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Итоги: день</label>
+                        <select class="form-select" @bind="votingClosedSwitchDayOfWeek">
+                            <option value="">--</option>
+                            @foreach (var day in weekDays)
+                            {
+                                <option value="@day.Value">@day.Label</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Итоги: время</label>
+                        <input type="text" class="form-control" @bind="votingClosedSwitchTime" placeholder="HH:mm" />
                     </div>
                 </div>
             </div>
@@ -243,10 +283,24 @@
     private string editingKindName = string.Empty;
     private ContestStage manualStage = ContestStage.TopicReception;
     private bool autoStageSwitchEnabled;
-    private DateTime? topicReceptionEndsAt;
-    private DateTime? workReceptionEndsAt;
-    private DateTime? votingOpenEndsAt;
-    private DateTime? votingClosedEndsAt;
+    private int? topicReceptionSwitchDayOfWeek;
+    private string topicReceptionSwitchTime = string.Empty;
+    private int? workReceptionSwitchDayOfWeek;
+    private string workReceptionSwitchTime = string.Empty;
+    private int? votingOpenSwitchDayOfWeek;
+    private string votingOpenSwitchTime = string.Empty;
+    private int? votingClosedSwitchDayOfWeek;
+    private string votingClosedSwitchTime = string.Empty;
+    private static readonly (int Value, string Label)[] weekDays =
+    {
+        ((int)DayOfWeek.Monday, "Понедельник"),
+        ((int)DayOfWeek.Tuesday, "Вторник"),
+        ((int)DayOfWeek.Wednesday, "Среда"),
+        ((int)DayOfWeek.Thursday, "Четверг"),
+        ((int)DayOfWeek.Friday, "Пятница"),
+        ((int)DayOfWeek.Saturday, "Суббота"),
+        ((int)DayOfWeek.Sunday, "Воскресенье")
+    };
 
     private List<ContestTopic> topics = new();
     private string message = string.Empty;
@@ -278,10 +332,14 @@
         maxTopicsCount = selectedContest?.MaxTopicsCount ?? 0;
         manualStage = selectedContest == null ? ContestStage.TopicReception : ContestService.GetContestStage(selectedContest);
         autoStageSwitchEnabled = selectedContest?.AutoStageSwitchEnabled ?? false;
-        topicReceptionEndsAt = selectedContest?.TopicReceptionEndsAt;
-        workReceptionEndsAt = selectedContest?.WorkReceptionEndsAt;
-        votingOpenEndsAt = selectedContest?.VotingOpenEndsAt;
-        votingClosedEndsAt = selectedContest?.VotingClosedEndsAt;
+        topicReceptionSwitchDayOfWeek = selectedContest?.TopicReceptionSwitchDayOfWeek;
+        topicReceptionSwitchTime = selectedContest?.TopicReceptionSwitchTime ?? string.Empty;
+        workReceptionSwitchDayOfWeek = selectedContest?.WorkReceptionSwitchDayOfWeek;
+        workReceptionSwitchTime = selectedContest?.WorkReceptionSwitchTime ?? string.Empty;
+        votingOpenSwitchDayOfWeek = selectedContest?.VotingOpenSwitchDayOfWeek;
+        votingOpenSwitchTime = selectedContest?.VotingOpenSwitchTime ?? string.Empty;
+        votingClosedSwitchDayOfWeek = selectedContest?.VotingClosedSwitchDayOfWeek;
+        votingClosedSwitchTime = selectedContest?.VotingClosedSwitchTime ?? string.Empty;
         announcementText = BuildAnnouncement(selectedContest);
         await ReloadTopicKindsAsync();
         await ReloadTopicsAsync();
@@ -401,10 +459,14 @@
         await ContestService.SaveStageAutomationSettingsAsync(
             selectedContestId,
             autoStageSwitchEnabled,
-            topicReceptionEndsAt,
-            workReceptionEndsAt,
-            votingOpenEndsAt,
-            votingClosedEndsAt);
+            topicReceptionSwitchDayOfWeek,
+            topicReceptionSwitchTime,
+            workReceptionSwitchDayOfWeek,
+            workReceptionSwitchTime,
+            votingOpenSwitchDayOfWeek,
+            votingOpenSwitchTime,
+            votingClosedSwitchDayOfWeek,
+            votingClosedSwitchTime);
 
         var proposedBy = string.IsNullOrWhiteSpace(currentUser?.DisplayName)
             ? currentUser?.Username ?? "system"

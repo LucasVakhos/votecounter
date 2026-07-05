@@ -4,6 +4,7 @@
 @using Rhymers.Core.Models
 @inject ModerationWebService ModerationService
 @inject AuthorizationWebService AuthService
+@inject ContestService ContestService
 @inject NavigationManager NavigationManager
 
 @{
@@ -30,6 +31,15 @@
                 <div class="alert alert-danger" role="alert">
                     <strong>❌ Доступ запрещён!</strong> Только авторы (и выше) могут подавать работы. 
                     Ваша роль: <strong>@GetRoleDisplay(currentUser.Role)</strong>
+                </div>
+                return;
+            }
+
+            @if (contest != null && ContestService.GetContestStage(contest) != ContestStage.WorkReception)
+            {
+                <div class="alert alert-warning" role="alert">
+                    Подать работу можно только на стадии "@ContestService.GetContestStageTitle(ContestStage.WorkReception)".
+                    Текущая стадия: <strong>@ContestService.GetContestStageTitle(ContestService.GetContestStage(contest))</strong>
                 </div>
                 return;
             }
@@ -169,10 +179,13 @@
     private bool isSubmitting = false;
     private bool isChecking = false;
     private WorkSpellCheckReport? grammarReport = null;
+    private Contest? contest;
 
     protected override async Task OnInitializedAsync()
     {
         currentUser = await AuthService.GetCurrentUserAsync();
+        var contestId = ContestId ?? "contest-1";
+        contest = await ContestService.GetContestAsync(contestId);
     }
 
     private async Task CheckGrammarAsync()
