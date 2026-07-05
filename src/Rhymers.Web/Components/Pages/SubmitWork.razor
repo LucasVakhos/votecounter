@@ -78,6 +78,13 @@
                 </div>
 
                 <div class="mb-4">
+                    <label for="copyrightHolder" class="form-label fw-bold">Обладатель авторского права</label>
+                    <input @bind="work.CopyrightHolder" id="copyrightHolder" type="text" class="form-control" 
+                           placeholder="ФИО или организация-правообладатель" />
+                    <small class="form-text text-muted">Если не указано, будет использовано имя автора</small>
+                </div>
+
+                <div class="mb-4">
                     <button type="button" class="btn btn-outline-secondary btn-sm" 
                             @onclick="CheckGrammarAsync" disabled="@(isChecking || string.IsNullOrEmpty(work.Content))">
                         @if (isChecking)

@@ -24,7 +24,7 @@ public sealed class ModerationService
     /// </summary>
     /// <param name="contestId">ID конкурса</param>
     /// <param name="work">Работа для подачи</param>
-    /// <returns>Подача с присвоенным ID</returns>
+    /// <returns>Подача с присвоенным ID и номером свидетельства</returns>
     public WorkSubmission SubmitWork(string contestId, ContestWork work)
     {
         if (string.IsNullOrEmpty(contestId))
@@ -33,11 +33,31 @@ public sealed class ModerationService
         if (work == null)
             throw new ArgumentNullException(nameof(work));
 
+        // Получить конкурс для номера и подсчёта работ
+        var contest = _context.Contests.FirstOrDefault(c => c.Id == contestId);
+        if (contest == null)
+            throw new ArgumentException($"Contest {contestId} not found", nameof(contestId));
+
+        // Подсчитать уже подано работ в этот конкурс (для порядкового номера)
+        var submissionCount = _context.Submissions
+            .Where(s => s.ContestId == contestId)
+            .Count();
+
+        // Сгенерировать номер свидетельства: YYYYMMDD-{номер конкурса}-{порядковый}
+        var certNumber = GenerateRegistrationCertificateNumber(
+            DateTime.Now, 
+            contest.Number, 
+            submissionCount + 1
+        );
+
+        var workClone = work.Clone();
+        workClone.RegistrationCertificateNumber = certNumber;
+
         var submission = new WorkSubmission
         {
             Id = Guid.NewGuid().ToString("N"),
             ContestId = contestId,
-            Work = work.Clone(),
+            Work = workClone,
             Status = WorkStatus.PendingModeration,
             SubmittedAt = DateTime.Now
         };
@@ -45,6 +65,19 @@ public sealed class ModerationService
         _context.Submissions.Add(submission);
         _context.SaveChanges();
         return submission;
+    }
+
+    /// <summary>
+    /// Генерирует номер свидетельства о регистрации права собственности.
+    /// Формат: YYYYMMDD-{номер конкурса}-{порядковый номер}
+    /// Пример: 20260705-001-001
+    /// </summary>
+    private static string GenerateRegistrationCertificateNumber(DateTime submittedAt, string contestNumber, int sequentialNumber)
+    {
+        var dateString = submittedAt.ToString("yyyyMMdd");
+        var contestNum = (contestNumber ?? "001").PadLeft(3, '0');
+        var sequentialNum = sequentialNumber.ToString().PadLeft(3, '0');
+        return $"{dateString}-{contestNum}-{sequentialNum}";
     }
 
     /// <summary>

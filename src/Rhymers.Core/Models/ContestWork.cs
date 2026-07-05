@@ -22,6 +22,12 @@ public sealed class ContestWork
     /// <summary>Когда работа была подана</summary>
     public DateTime SubmittedAt { get; set; } = DateTime.Now;
 
+    /// <summary>Информация об авторском праве (обладатель копирайта)</summary>
+    public string? CopyrightHolder { get; set; }
+
+    /// <summary>Номер свидетельства о регистрации права собственности</summary>
+    public string? RegistrationCertificateNumber { get; set; }
+
     public ContestWork Clone()
     {
         return new ContestWork
@@ -34,7 +40,9 @@ public sealed class ContestWork
             Content = Content,
             HasVotes = HasVotes,
             Status = Status,
-            SubmittedAt = SubmittedAt
+            SubmittedAt = SubmittedAt,
+            CopyrightHolder = CopyrightHolder,
+            RegistrationCertificateNumber = RegistrationCertificateNumber
         };
     }
 }

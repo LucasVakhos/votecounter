@@ -97,6 +97,8 @@ public sealed class RhymersDbContext : DbContext
                 work.Property(w => w.Author).HasMaxLength(256);
                 work.Property(w => w.Topic).HasMaxLength(256);
                 work.Property(w => w.Status).IsRequired();
+                work.Property(w => w.CopyrightHolder).HasMaxLength(256);
+                work.Property(w => w.RegistrationCertificateNumber).HasMaxLength(50);
             });
         });
 
