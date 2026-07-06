@@ -59,6 +59,7 @@ type ModerationAction = {
 type TargetFilter = "all" | "comment" | "review";
 type ActionFilter = "all" | "delete" | "restore" | "hide" | "approve";
 type TimelineTarget = { targetType: "comment" | "review"; targetId: string } | null;
+type ParticipantRole = "reader" | "author" | "moderator" | "admin";
 
 const DEFAULT_API_BASE = "http://localhost:4000";
 
@@ -69,6 +70,80 @@ function formatDate(value: string | undefined): string {
 
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function getLiveHelp(role: ParticipantRole, context: {
+  contestId: string;
+  workNumber: string;
+  commentsCount: number;
+  reviewsCount: number;
+  deletedCount: number;
+  timelineTarget: TimelineTarget;
+  hasFilters: boolean;
+}): { headline: string; steps: string[] } {
+  if (role === "reader") {
+    return {
+      headline: "Reader help",
+      steps: [
+        `Open contest ${context.contestId} to inspect visible comments and reviews without changing state.`,
+        context.hasFilters ? "Clear filters if you want the full picture before reporting an issue." : "Use filters to focus on a specific author or moderation reason.",
+        context.deletedCount > 0 ? "Deleted items exist, so ask a moderator if you need an explanation for a missing post." : "No deleted items are visible right now, so the discussion is currently clean."
+      ]
+    };
+  }
+
+  if (role === "author") {
+    return {
+      headline: "Author help",
+      steps: [
+        `Create a comment or a review for work ${context.workNumber} to test the full publishing flow.`,
+        context.commentsCount === 0 ? "Start with a comment so moderators have something concrete to review." : "Comments already exist, so you can iterate on moderation scenarios immediately.",
+        context.reviewsCount === 0 ? "Add a review next to verify helpful, hide, and delete actions." : "Reviews are present, so you can test helpful and moderation actions live."
+      ]
+    };
+  }
+
+  if (role === "admin") {
+    return {
+      headline: "Admin help",
+      steps: [
+        "Audit moderation log entries first, then drill into a specific timeline when something looks suspicious.",
+        context.timelineTarget ? `Timeline is locked to ${context.timelineTarget.targetType}:${context.timelineTarget.targetId}; clear it to resume broad oversight.` : "Select Timeline on any item to inspect a full action chain on one target.",
+        context.deletedCount > 0 ? "Restore items only after checking reason and matching the deletion against policy." : "No deleted items are waiting, so focus on approval and hidden-state hygiene."
+      ]
+    };
+  }
+
+  return {
+    headline: "Moderator help",
+    steps: [
+      context.commentsCount + context.reviewsCount === 0
+        ? "No active discussion data yet. Create a comment or review first, then test moderation actions."
+        : "Use quick actions on cards to moderate without reloading the whole dashboard.",
+      context.timelineTarget
+        ? `You are tracing ${context.timelineTarget.targetType}:${context.timelineTarget.targetId}. Use this to confirm delete/restore order.`
+        : "Pick Timeline on a comment, review, deleted item, or log entry to inspect one target end-to-end.",
+      context.hasFilters ? "Filters are active; if counts look odd, clear them before assuming data is missing." : "No filters are active, so current counts reflect the whole selected contest/work scope."
+    ]
+  };
+}
+
+function createOptimisticLogEntry(
+  moderatorName: string,
+  action: ModerationAction["action"],
+  targetType: ModerationAction["targetType"],
+  targetId: string,
+  reason?: string
+): ModerationAction {
+  return {
+    id: `optimistic-${crypto.randomUUID()}`,
+    moderatorName,
+    action,
+    targetType,
+    targetId,
+    reason,
+    performedAt: new Date().toISOString()
+  };
 }
 
 export function App() {
@@ -86,6 +161,7 @@ export function App() {
   const [reviewTitle, setReviewTitle] = useState("Strong piece");
   const [reviewDraft, setReviewDraft] = useState("This work has a clear voice and solid rhythm.");
   const [reviewRating, setReviewRating] = useState("8");
+  const [participantRole, setParticipantRole] = useState<ParticipantRole>("moderator");
   const [targetFilter, setTargetFilter] = useState<TargetFilter>("all");
   const [authorFilter, setAuthorFilter] = useState("");
   const [reasonFilter, setReasonFilter] = useState("");
@@ -98,6 +174,50 @@ export function App() {
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [deletedItems, setDeletedItems] = useState<DeletedItem[]>([]);
   const [moderationLog, setModerationLog] = useState<ModerationAction[]>([]);
+
+  const liveHelp = getLiveHelp(participantRole, {
+    contestId,
+    workNumber,
+    commentsCount: comments.length,
+    reviewsCount: reviews.length,
+    deletedCount: deletedItems.length,
+    timelineTarget,
+    hasFilters: Boolean(targetFilter !== "all" || authorFilter || reasonFilter || moderatorFilter || actionFilter !== "all" || fromFilter || toFilter)
+  });
+
+  function pushLogEntry(entry: ModerationAction): void {
+    setModerationLog((current) => [entry, ...current].slice(0, 20));
+  }
+
+  function updateCommentItem(commentId: string, updater: (comment: CommentItem) => CommentItem): CommentItem | null {
+    let updatedComment: CommentItem | null = null;
+    setComments((current) =>
+      current.map((comment) => {
+        if (comment.id !== commentId) {
+          return comment;
+        }
+
+        updatedComment = updater(comment);
+        return updatedComment;
+      })
+    );
+    return updatedComment;
+  }
+
+  function updateReviewItem(reviewId: string, updater: (review: ReviewItem) => ReviewItem): ReviewItem | null {
+    let updatedReview: ReviewItem | null = null;
+    setReviews((current) =>
+      current.map((review) => {
+        if (review.id !== reviewId) {
+          return review;
+        }
+
+        updatedReview = updater(review);
+        return updatedReview;
+      })
+    );
+    return updatedReview;
+  }
 
   async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${apiBase}${path}`, {
@@ -207,12 +327,70 @@ export function App() {
     setNotice(null);
 
     try {
+      const trimmedReason = deleteReason.trim() || undefined;
+      const existingComment = comments.find((comment) => comment.id === targetId);
+      const existingReview = reviews.find((review) => review.id === targetId);
       await fetchJson<{ ok: true }>(`/api/discussions/${targetType === "comment" ? "comments" : "reviews"}/${targetId}/delete`, {
         method: "POST",
-        body: JSON.stringify({ reason: deleteReason.trim() || undefined })
+        body: JSON.stringify({ reason: trimmedReason })
       });
+
+      const deletedAt = new Date().toISOString();
+      if (targetType === "comment") {
+        const updated = updateCommentItem(targetId, (comment) => ({
+          ...comment,
+          content: "[Deleted by moderation]",
+          isApproved: false,
+          isHidden: true,
+          isDeleted: true,
+          deletedBy: moderatorName
+        }));
+
+        if (updated) {
+          setDeletedItems((current) => [
+            {
+              targetType: "comment",
+              targetId,
+              contestId,
+              authorName: updated.authorName,
+              deletedBy: moderatorName,
+              deletedAt,
+              reason: trimmedReason,
+              originalContent: existingComment?.content ?? updated.content
+            },
+            ...current.filter((item) => item.targetId !== targetId)
+          ]);
+        }
+      } else {
+        const updated = updateReviewItem(targetId, (review) => ({
+          ...review,
+          title: "[Deleted by moderation]",
+          content: "[Deleted by moderation]",
+          isApproved: false,
+          isHidden: true,
+          isDeleted: true,
+          deletedBy: moderatorName
+        }));
+
+        if (updated) {
+          setDeletedItems((current) => [
+            {
+              targetType: "review",
+              targetId,
+              contestId,
+              authorName: updated.reviewerName,
+              deletedBy: moderatorName,
+              deletedAt,
+              reason: trimmedReason,
+              originalContent: existingReview?.title ?? updated.title
+            },
+            ...current.filter((item) => item.targetId !== targetId)
+          ]);
+        }
+      }
+
+      pushLogEntry(createOptimisticLogEntry(moderatorName, "delete", targetType, targetId, trimmedReason));
       setNotice(`${targetType} deleted`);
-      await loadDashboard();
     } catch (actionError: unknown) {
       setError(actionError instanceof Error ? actionError.message : "unknown error");
     } finally {
@@ -229,8 +407,31 @@ export function App() {
       await fetchJson<{ ok: true }>(`/api/discussions/${targetType === "comment" ? "comments" : "reviews"}/${targetId}/restore`, {
         method: "POST"
       });
+
+      if (targetType === "comment") {
+        updateCommentItem(targetId, (comment) => ({
+          ...comment,
+          content: deletedItems.find((item) => item.targetId === targetId)?.originalContent ?? comment.content,
+          isApproved: true,
+          isHidden: false,
+          isDeleted: false,
+          deletedBy: undefined
+        }));
+      } else {
+        updateReviewItem(targetId, (review) => ({
+          ...review,
+          title: deletedItems.find((item) => item.targetId === targetId)?.originalContent ?? review.title,
+          content: review.content === "[Deleted by moderation]" ? review.content : review.content,
+          isApproved: true,
+          isHidden: false,
+          isDeleted: false,
+          deletedBy: undefined
+        }));
+      }
+
+      setDeletedItems((current) => current.filter((item) => item.targetId !== targetId));
+      pushLogEntry(createOptimisticLogEntry(moderatorName, "restore", targetType, targetId));
       setNotice(`${targetType} restored`);
-      await loadDashboard();
     } catch (actionError: unknown) {
       setError(actionError instanceof Error ? actionError.message : "unknown error");
     } finally {
@@ -247,8 +448,40 @@ export function App() {
       await fetchJson<{ ok: true }>(`/api/discussions/${targetType === "comment" ? "comments" : "reviews"}/${targetId}/${action}`, {
         method: "POST"
       });
+
+      if (targetType === "comment") {
+        updateCommentItem(targetId, (comment) => {
+          if (action === "like") {
+            return { ...comment, likesCount: comment.likesCount + 1 };
+          }
+          if (action === "approve") {
+            return { ...comment, isApproved: true, isHidden: false };
+          }
+          if (action === "hide") {
+            return { ...comment, isHidden: true };
+          }
+          return comment;
+        });
+      } else {
+        updateReviewItem(targetId, (review) => {
+          if (action === "helpful") {
+            return { ...review, helpfulCount: review.helpfulCount + 1 };
+          }
+          if (action === "approve") {
+            return { ...review, isApproved: true, isHidden: false };
+          }
+          if (action === "hide") {
+            return { ...review, isHidden: true };
+          }
+          return review;
+        });
+      }
+
+      if (action === "approve" || action === "hide") {
+        pushLogEntry(createOptimisticLogEntry(moderatorName, action, targetType, targetId));
+      }
+
       setNotice(`${targetType} ${action}d`);
-      await loadDashboard();
     } catch (actionError: unknown) {
       setError(actionError instanceof Error ? actionError.message : "unknown error");
     } finally {
@@ -266,7 +499,7 @@ export function App() {
     setNotice(null);
 
     try {
-      await fetchJson<CommentItem>(`/api/discussions/contests/${encodeURIComponent(contestId)}/comments`, {
+      const created = await fetchJson<CommentItem>(`/api/discussions/contests/${encodeURIComponent(contestId)}/comments`, {
         method: "POST",
         headers: {
           "X-User-Name": authorName,
@@ -274,8 +507,9 @@ export function App() {
         },
         body: JSON.stringify({ content: commentDraft.trim() })
       });
+      setComments((current) => [created, ...current]);
       setNotice("comment created");
-      await loadDashboard();
+      setCommentDraft("");
     } catch (actionError: unknown) {
       setError(actionError instanceof Error ? actionError.message : "unknown error");
     } finally {
@@ -290,7 +524,7 @@ export function App() {
 
     try {
       const parsedRating = Number.parseInt(reviewRating, 10);
-      await fetchJson<ReviewItem>(
+      const created = await fetchJson<ReviewItem>(
         `/api/discussions/contests/${encodeURIComponent(contestId)}/works/${encodeURIComponent(workNumber)}/reviews`,
         {
           method: "POST",
@@ -305,8 +539,10 @@ export function App() {
           })
         }
       );
+      setReviews((current) => [created, ...current]);
       setNotice("review created");
-      await loadDashboard();
+      setReviewTitle("");
+      setReviewDraft("");
     } catch (actionError: unknown) {
       setError(actionError instanceof Error ? actionError.message : "unknown error");
     } finally {
@@ -350,6 +586,15 @@ export function App() {
           Author name
           <input value={authorName} onChange={(event) => setAuthorName(event.target.value)} />
         </label>
+        <label>
+          Help role
+          <select value={participantRole} onChange={(event) => setParticipantRole(event.target.value as ParticipantRole)}>
+            <option value="reader">Reader</option>
+            <option value="author">Author</option>
+            <option value="moderator">Moderator</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
         <label className="reason-field">
           Delete reason
           <input value={deleteReason} onChange={(event) => setDeleteReason(event.target.value)} placeholder="spam, abuse, off-topic" />
@@ -357,6 +602,21 @@ export function App() {
         <button className="primary" disabled={busy} onClick={() => void loadDashboard()}>
           {busy ? "Refreshing..." : "Refresh dashboard"}
         </button>
+      </section>
+
+      <section className="card panel">
+        <div className="panel-header">
+          <h2>Live help</h2>
+          <span>{participantRole}</span>
+        </div>
+        <div className="stack">
+          <p><strong>{liveHelp.headline}</strong></p>
+          {liveHelp.steps.map((step) => (
+            <div className="item" key={step}>
+              <p>{step}</p>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="card controls filter-controls">
