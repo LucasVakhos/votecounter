@@ -58,6 +58,7 @@ type ModerationAction = {
 
 type TargetFilter = "all" | "comment" | "review";
 type ActionFilter = "all" | "delete" | "restore" | "hide" | "approve";
+type TimelineTarget = { targetType: "comment" | "review"; targetId: string } | null;
 
 const DEFAULT_API_BASE = "http://localhost:4000";
 
@@ -92,6 +93,7 @@ export function App() {
   const [actionFilter, setActionFilter] = useState<ActionFilter>("all");
   const [fromFilter, setFromFilter] = useState("");
   const [toFilter, setToFilter] = useState("");
+  const [timelineTarget, setTimelineTarget] = useState<TimelineTarget>(null);
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [deletedItems, setDeletedItems] = useState<DeletedItem[]>([]);
@@ -161,6 +163,9 @@ export function App() {
       }
       if (actionFilter !== "all") {
         logParams.set("action", actionFilter);
+      }
+      if (timelineTarget) {
+        logParams.set("targetId", timelineTarget.targetId);
       }
       if (reasonFilter.trim()) {
         logParams.set("reason", reasonFilter.trim());
@@ -249,6 +254,10 @@ export function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function openTimeline(targetType: "comment" | "review", targetId: string): void {
+    setTimelineTarget({ targetType, targetId });
   }
 
   async function createComment(): Promise<void> {
@@ -392,6 +401,18 @@ export function App() {
         <button className="primary" disabled={busy} onClick={() => void loadDashboard()}>
           Apply filters
         </button>
+        {timelineTarget && (
+          <button
+            className="secondary"
+            disabled={busy}
+            onClick={() => {
+              setTimelineTarget(null);
+              void loadDashboard();
+            }}
+          >
+            Clear timeline
+          </button>
+        )}
       </section>
 
       <section className="grid composer-grid">
@@ -477,6 +498,9 @@ export function App() {
                   <span>{comment.isDeleted ? `Deleted by ${comment.deletedBy ?? "?"}` : "Active"}</span>
                 </div>
                 <div className="actions">
+                  <button disabled={busy} onClick={() => openTimeline("comment", comment.id)}>
+                    Timeline
+                  </button>
                   {!comment.isDeleted && (
                     <button disabled={busy} onClick={() => void runTargetAction("comment", comment.id, "like")}>
                       Like
@@ -532,6 +556,9 @@ export function App() {
                   <span>{review.isDeleted ? `Deleted by ${review.deletedBy ?? "?"}` : "Active"}</span>
                 </div>
                 <div className="actions">
+                  <button disabled={busy} onClick={() => openTimeline("review", review.id)}>
+                    Timeline
+                  </button>
                   {!review.isDeleted && (
                     <button disabled={busy} onClick={() => void runTargetAction("review", review.id, "helpful")}>
                       Helpful
@@ -567,6 +594,34 @@ export function App() {
       <section className="grid">
         <article className="card panel">
           <div className="panel-header">
+            <h2>Target timeline</h2>
+            <span>{moderationLog.length}</span>
+          </div>
+          <div className="stack">
+            <p className="muted">
+              {timelineTarget ? `${timelineTarget.targetType}:${timelineTarget.targetId}` : "Select Timeline on a comment, review, deleted item, or log entry."}
+            </p>
+            {moderationLog.length === 0 && <p className="muted">No moderation actions for current timeline/filter state.</p>}
+            {moderationLog.map((entry) => (
+              <div className="item" key={`timeline-${entry.id}`}>
+                <div className="item-meta">
+                  <strong>{entry.action}</strong>
+                  <span>{entry.targetType}</span>
+                  <span>{formatDate(entry.performedAt)}</span>
+                </div>
+                <p>
+                  {entry.moderatorName} acted on {entry.targetId}
+                </p>
+                <div className="item-footer">
+                  <span>Reason: {entry.reason ?? "-"}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="card panel">
+          <div className="panel-header">
             <h2>Deleted items</h2>
             <span>{deletedItems.length}</span>
           </div>
@@ -585,6 +640,9 @@ export function App() {
                   <span>Deleted by: {item.deletedBy}</span>
                 </div>
                 <div className="actions">
+                  <button disabled={busy} onClick={() => openTimeline(item.targetType, item.targetId)}>
+                    Timeline
+                  </button>
                   <button disabled={busy} onClick={() => void restoreTarget(item.targetType, item.targetId)}>
                     Restore
                   </button>
@@ -613,6 +671,11 @@ export function App() {
                 </p>
                 <div className="item-footer">
                   <span>Reason: {entry.reason ?? "-"}</span>
+                </div>
+                <div className="actions">
+                  <button disabled={busy} onClick={() => openTimeline(entry.targetType, entry.targetId)}>
+                    Timeline
+                  </button>
                 </div>
               </div>
             ))}

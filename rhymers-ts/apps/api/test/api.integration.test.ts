@@ -333,6 +333,14 @@ test("moderation deleted list and log endpoints", async () => {
   assert.equal(filteredLog.body[0].targetType, "review");
   assert.equal(filteredLog.body[0].reason, "off-topic");
 
+  const targetTimeline = await request(app)
+    .get(`/api/discussions/moderation/log?targetId=${reviewId}`)
+    .set("X-User-Name", "ModUser")
+    .set("X-User-Role", "moderator");
+  assert.equal(targetTimeline.status, 200);
+  assert.equal(targetTimeline.body.length, 1);
+  assert.equal(targetTimeline.body[0].targetId, reviewId);
+
   // non-moderator cannot access deleted list
   const forbidden = await request(app)
     .get("/api/discussions/moderation/deleted")

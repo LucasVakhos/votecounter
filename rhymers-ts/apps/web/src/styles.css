@@ -116,6 +116,7 @@ textarea {
 }
 
 .primary,
+.secondary,
 .actions button {
   border: 0;
   border-radius: 14px;
@@ -130,17 +131,25 @@ textarea {
   font-weight: 700;
 }
 
+.secondary {
+  background: #f0f4fb;
+  color: #28435f;
+  font-weight: 700;
+}
+
 .actions button {
   background: #e5eefc;
   color: #25405f;
 }
 
 .primary:hover,
+.secondary:hover,
 .actions button:hover {
   transform: translateY(-1px);
 }
 
 .primary:disabled,
+.secondary:disabled,
 .actions button:disabled {
   opacity: 0.6;
   cursor: default;

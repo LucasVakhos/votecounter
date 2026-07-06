@@ -284,6 +284,7 @@ discussionsRouter.get("/moderation/log", (req, res) => {
         req.query.targetType === "comment" || req.query.targetType === "review"
           ? req.query.targetType
           : undefined,
+      targetId: typeof req.query.targetId === "string" ? req.query.targetId : undefined,
       moderatorName: typeof req.query.moderatorName === "string" ? req.query.moderatorName : undefined,
       action:
         req.query.action === "delete" || req.query.action === "restore" || req.query.action === "hide" || req.query.action === "approve"

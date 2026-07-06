@@ -274,6 +274,7 @@ export function logModerationAction(
 
 type ModerationLogFilters = {
   targetType?: ModerationTargetType;
+  targetId?: string;
   moderatorName?: string;
   action?: ModerationActionKind;
   reason?: string;
@@ -327,6 +328,10 @@ export function getModerationLog(limit = 100, filters: ModerationLogFilters = {}
     .map(mapModerationAction)
     .filter((entry) => {
       if (filters.targetType && entry.targetType !== filters.targetType) {
+        return false;
+      }
+
+      if (filters.targetId && entry.targetId !== filters.targetId) {
         return false;
       }
 
