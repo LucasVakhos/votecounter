@@ -272,21 +272,87 @@ export function logModerationAction(
   ).run(crypto.randomUUID(), moderatorName, action, targetType, targetId, reason ?? null, new Date().toISOString());
 }
 
-export function getModerationLog(limit = 100): ModerationAction[] {
+type ModerationLogFilters = {
+  targetType?: ModerationTargetType;
+  moderatorName?: string;
+  action?: ModerationActionKind;
+  reason?: string;
+  from?: string;
+  to?: string;
+};
+
+type DeletedItemFilters = {
+  contestId?: string;
+  targetType?: ModerationTargetType;
+  authorName?: string;
+  reason?: string;
+  from?: string;
+  to?: string;
+};
+
+function includesText(value: string | undefined, needle: string | undefined): boolean {
+  if (!needle) {
+    return true;
+  }
+
+  return value?.toLowerCase().includes(needle.toLowerCase()) ?? false;
+}
+
+function isWithinDateRange(value: string, from?: string, to?: string): boolean {
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) {
+    return false;
+  }
+
+  const fromTimestamp = from ? new Date(from).getTime() : undefined;
+  const toTimestamp = to ? new Date(to).getTime() : undefined;
+
+  if (typeof fromTimestamp === "number" && !Number.isNaN(fromTimestamp) && timestamp < fromTimestamp) {
+    return false;
+  }
+
+  if (typeof toTimestamp === "number" && !Number.isNaN(toTimestamp) && timestamp > toTimestamp) {
+    return false;
+  }
+
+  return true;
+}
+
+export function getModerationLog(limit = 100, filters: ModerationLogFilters = {}): ModerationAction[] {
   return (
     db
       .prepare("SELECT id, moderator_name, action, target_type, target_id, reason, performed_at FROM moderation_actions ORDER BY performed_at DESC LIMIT ?")
       .all(limit) as ModerationActionRow[]
-  ).map(mapModerationAction);
+  )
+    .map(mapModerationAction)
+    .filter((entry) => {
+      if (filters.targetType && entry.targetType !== filters.targetType) {
+        return false;
+      }
+
+      if (filters.action && entry.action !== filters.action) {
+        return false;
+      }
+
+      if (!includesText(entry.moderatorName, filters.moderatorName)) {
+        return false;
+      }
+
+      if (!includesText(entry.reason, filters.reason)) {
+        return false;
+      }
+
+      return isWithinDateRange(entry.performedAt, filters.from, filters.to);
+    });
 }
 
-export function getDeletedItems(contestId?: string): DeletedItem[] {
+export function getDeletedItems(filters: DeletedItemFilters = {}): DeletedItem[] {
   const comments = db
     .prepare(
       "SELECT 'comment' AS target_type, id, contest_id, author_name, deleted_by, deleted_at, delete_reason, content FROM contest_comments WHERE is_deleted = 1" +
-      (contestId ? " AND contest_id = ?" : "")
+      (filters.contestId ? " AND contest_id = ?" : "")
     )
-    .all(...(contestId ? [contestId] : [])) as Array<{
+    .all(...(filters.contestId ? [filters.contestId] : [])) as Array<{
       target_type: "comment";
       id: string;
       contest_id: string;
@@ -300,9 +366,9 @@ export function getDeletedItems(contestId?: string): DeletedItem[] {
   const reviews = db
     .prepare(
       "SELECT 'review' AS target_type, id, contest_id, reviewer_name AS author_name, deleted_by, deleted_at, delete_reason, title AS content FROM work_reviews WHERE is_deleted = 1" +
-      (contestId ? " AND contest_id = ?" : "")
+      (filters.contestId ? " AND contest_id = ?" : "")
     )
-    .all(...(contestId ? [contestId] : [])) as Array<{
+    .all(...(filters.contestId ? [filters.contestId] : [])) as Array<{
       target_type: "review";
       id: string;
       contest_id: string;
@@ -313,16 +379,32 @@ export function getDeletedItems(contestId?: string): DeletedItem[] {
       content: string;
     }>;
 
-  return [...comments, ...reviews].map((row) => ({
-    targetType: row.target_type,
-    targetId: row.id,
-    contestId: row.contest_id,
-    authorName: row.author_name,
-    deletedBy: row.deleted_by ?? "unknown",
-    deletedAt: row.deleted_at ?? "",
-    reason: row.delete_reason ?? undefined,
-    originalContent: row.content
-  }));
+  return [...comments, ...reviews]
+    .map((row) => ({
+      targetType: row.target_type,
+      targetId: row.id,
+      contestId: row.contest_id,
+      authorName: row.author_name,
+      deletedBy: row.deleted_by ?? "unknown",
+      deletedAt: row.deleted_at ?? "",
+      reason: row.delete_reason ?? undefined,
+      originalContent: row.content
+    }))
+    .filter((item) => {
+      if (filters.targetType && item.targetType !== filters.targetType) {
+        return false;
+      }
+
+      if (!includesText(item.authorName, filters.authorName)) {
+        return false;
+      }
+
+      if (!includesText(item.reason, filters.reason)) {
+        return false;
+      }
+
+      return isWithinDateRange(item.deletedAt, filters.from, filters.to);
+    });
 }
 
 export function setAuthorResponse(reviewId: string, responseText: string): boolean {

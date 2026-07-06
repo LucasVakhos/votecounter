@@ -47,12 +47,15 @@ type DeletedItem = {
 type ModerationAction = {
   id: string;
   moderatorName: string;
-  action: string;
+  action: "delete" | "restore" | "hide" | "approve";
   targetType: "comment" | "review";
   targetId: string;
   reason?: string;
   performedAt: string;
 };
+
+type TargetFilter = "all" | "comment" | "review";
+type ActionFilter = "all" | "delete" | "restore" | "hide" | "approve";
 
 const DEFAULT_API_BASE = "http://localhost:4000";
 
@@ -80,6 +83,13 @@ export function App() {
   const [reviewTitle, setReviewTitle] = useState("Strong piece");
   const [reviewDraft, setReviewDraft] = useState("This work has a clear voice and solid rhythm.");
   const [reviewRating, setReviewRating] = useState("8");
+  const [targetFilter, setTargetFilter] = useState<TargetFilter>("all");
+  const [authorFilter, setAuthorFilter] = useState("");
+  const [reasonFilter, setReasonFilter] = useState("");
+  const [moderatorFilter, setModeratorFilter] = useState("");
+  const [actionFilter, setActionFilter] = useState<ActionFilter>("all");
+  const [fromFilter, setFromFilter] = useState("");
+  const [toFilter, setToFilter] = useState("");
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [deletedItems, setDeletedItems] = useState<DeletedItem[]>([]);
@@ -121,12 +131,51 @@ export function App() {
     setError(null);
 
     try {
+      const deletedParams = new URLSearchParams();
+      deletedParams.set("contestId", contestId);
+      if (targetFilter !== "all") {
+        deletedParams.set("targetType", targetFilter);
+      }
+      if (authorFilter.trim()) {
+        deletedParams.set("authorName", authorFilter.trim());
+      }
+      if (reasonFilter.trim()) {
+        deletedParams.set("reason", reasonFilter.trim());
+      }
+      if (fromFilter) {
+        deletedParams.set("from", new Date(fromFilter).toISOString());
+      }
+      if (toFilter) {
+        deletedParams.set("to", new Date(toFilter).toISOString());
+      }
+
+      const logParams = new URLSearchParams();
+      logParams.set("limit", "20");
+      if (targetFilter !== "all") {
+        logParams.set("targetType", targetFilter);
+      }
+      if (moderatorFilter.trim()) {
+        logParams.set("moderatorName", moderatorFilter.trim());
+      }
+      if (actionFilter !== "all") {
+        logParams.set("action", actionFilter);
+      }
+      if (reasonFilter.trim()) {
+        logParams.set("reason", reasonFilter.trim());
+      }
+      if (fromFilter) {
+        logParams.set("from", new Date(fromFilter).toISOString());
+      }
+      if (toFilter) {
+        logParams.set("to", new Date(toFilter).toISOString());
+      }
+
       const [healthResponse, commentsResponse, reviewsResponse, deletedResponse, logResponse] = await Promise.all([
         fetchJson<HealthResponse>("/health", { headers: {} }),
         fetchJson<CommentItem[]>(`/api/discussions/contests/${encodeURIComponent(contestId)}/comments`),
         fetchJson<ReviewItem[]>(`/api/discussions/contests/${encodeURIComponent(contestId)}/works/${encodeURIComponent(workNumber)}/reviews`),
-        fetchJson<DeletedItem[]>(`/api/discussions/moderation/deleted?contestId=${encodeURIComponent(contestId)}`),
-        fetchJson<ModerationAction[]>("/api/discussions/moderation/log?limit=20")
+        fetchJson<DeletedItem[]>(`/api/discussions/moderation/deleted?${deletedParams.toString()}`),
+        fetchJson<ModerationAction[]>(`/api/discussions/moderation/log?${logParams.toString()}`)
       ]);
 
       setHealth(healthResponse);
@@ -278,6 +327,50 @@ export function App() {
         </label>
         <button className="primary" disabled={busy} onClick={() => void loadDashboard()}>
           {busy ? "Refreshing..." : "Refresh dashboard"}
+        </button>
+      </section>
+
+      <section className="card controls filter-controls">
+        <label>
+          Target type
+          <select value={targetFilter} onChange={(event) => setTargetFilter(event.target.value as TargetFilter)}>
+            <option value="all">All</option>
+            <option value="comment">Comments</option>
+            <option value="review">Reviews</option>
+          </select>
+        </label>
+        <label>
+          Author filter
+          <input value={authorFilter} onChange={(event) => setAuthorFilter(event.target.value)} placeholder="Poet, Critic..." />
+        </label>
+        <label>
+          Moderator filter
+          <input value={moderatorFilter} onChange={(event) => setModeratorFilter(event.target.value)} placeholder="ModUser..." />
+        </label>
+        <label>
+          Action filter
+          <select value={actionFilter} onChange={(event) => setActionFilter(event.target.value as ActionFilter)}>
+            <option value="all">All</option>
+            <option value="delete">Delete</option>
+            <option value="restore">Restore</option>
+            <option value="hide">Hide</option>
+            <option value="approve">Approve</option>
+          </select>
+        </label>
+        <label>
+          Reason filter
+          <input value={reasonFilter} onChange={(event) => setReasonFilter(event.target.value)} placeholder="abuse, off-topic..." />
+        </label>
+        <label>
+          From
+          <input type="datetime-local" value={fromFilter} onChange={(event) => setFromFilter(event.target.value)} />
+        </label>
+        <label>
+          To
+          <input type="datetime-local" value={toFilter} onChange={(event) => setToFilter(event.target.value)} />
+        </label>
+        <button className="primary" disabled={busy} onClick={() => void loadDashboard()}>
+          Apply filters
         </button>
       </section>
 

@@ -255,8 +255,19 @@ discussionsRouter.get("/moderation/deleted", (req, res) => {
     return;
   }
 
-  const contestId = typeof req.query.contestId === "string" ? req.query.contestId : undefined;
-  res.json(getDeletedItems(contestId));
+  res.json(
+    getDeletedItems({
+      contestId: typeof req.query.contestId === "string" ? req.query.contestId : undefined,
+      targetType:
+        req.query.targetType === "comment" || req.query.targetType === "review"
+          ? req.query.targetType
+          : undefined,
+      authorName: typeof req.query.authorName === "string" ? req.query.authorName : undefined,
+      reason: typeof req.query.reason === "string" ? req.query.reason : undefined,
+      from: typeof req.query.from === "string" ? req.query.from : undefined,
+      to: typeof req.query.to === "string" ? req.query.to : undefined
+    })
+  );
 });
 
 discussionsRouter.get("/moderation/log", (req, res) => {
@@ -267,7 +278,22 @@ discussionsRouter.get("/moderation/log", (req, res) => {
   }
 
   const limit = Number(req.query.limit) || 100;
-  res.json(getModerationLog(limit));
+  res.json(
+    getModerationLog(limit, {
+      targetType:
+        req.query.targetType === "comment" || req.query.targetType === "review"
+          ? req.query.targetType
+          : undefined,
+      moderatorName: typeof req.query.moderatorName === "string" ? req.query.moderatorName : undefined,
+      action:
+        req.query.action === "delete" || req.query.action === "restore" || req.query.action === "hide" || req.query.action === "approve"
+          ? req.query.action
+          : undefined,
+      reason: typeof req.query.reason === "string" ? req.query.reason : undefined,
+      from: typeof req.query.from === "string" ? req.query.from : undefined,
+      to: typeof req.query.to === "string" ? req.query.to : undefined
+    })
+  );
 });
 
 discussionsRouter.post("/reviews/:reviewId/author-response", (req, res) => {

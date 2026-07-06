@@ -19,6 +19,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -91,7 +92,8 @@ textarea {
   color: #526172;
 }
 
-.controls input {
+.controls input,
+.controls select {
   width: 100%;
   padding: 0.8rem 0.9rem;
   border-radius: 14px;
@@ -153,6 +155,10 @@ textarea {
 
 .composer-grid {
   align-items: start;
+}
+
+.filter-controls {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
 .composer-fields {

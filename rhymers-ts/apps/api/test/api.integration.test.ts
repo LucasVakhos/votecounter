@@ -281,16 +281,36 @@ test("moderation deleted list and log endpoints", async () => {
     .set("X-User-Role", "moderator")
     .send({ reason: "abuse" });
 
+  const review = await request(app)
+    .post("/api/discussions/contests/c2/works/1/reviews")
+    .set("X-User-Name", "Critic")
+    .set("X-User-Role", "author")
+    .send({ title: "Harsh take", content: "Needs work", rating: 4 });
+  const reviewId = review.body.id as string;
+
+  await request(app)
+    .post(`/api/discussions/reviews/${reviewId}/delete`)
+    .set("X-User-Name", "NightMod")
+    .set("X-User-Role", "moderator")
+    .send({ reason: "off-topic" });
+
   // list deleted items
   const deleted = await request(app)
     .get("/api/discussions/moderation/deleted?contestId=c2")
     .set("X-User-Name", "ModUser")
     .set("X-User-Role", "moderator");
   assert.equal(deleted.status, 200);
-  assert.equal(deleted.body.length, 1);
-  assert.equal(deleted.body[0].reason, "abuse");
-  assert.equal(deleted.body[0].originalContent, "Bad post");
-  assert.equal(deleted.body[0].targetType, "comment");
+  assert.equal(deleted.body.length, 2);
+  assert.ok(deleted.body.some((item: { targetType: string; reason?: string; originalContent: string }) => item.targetType === "comment" && item.reason === "abuse" && item.originalContent === "Bad post"));
+
+  const deletedFiltered = await request(app)
+    .get("/api/discussions/moderation/deleted?contestId=c2&targetType=review&authorName=critic&reason=off")
+    .set("X-User-Name", "ModUser")
+    .set("X-User-Role", "moderator");
+  assert.equal(deletedFiltered.status, 200);
+  assert.equal(deletedFiltered.body.length, 1);
+  assert.equal(deletedFiltered.body[0].targetType, "review");
+  assert.equal(deletedFiltered.body[0].targetId, reviewId);
 
   // moderation log
   const log = await request(app)
@@ -301,8 +321,17 @@ test("moderation deleted list and log endpoints", async () => {
   assert.ok(log.body.length >= 1);
   const entry = log.body[0];
   assert.equal(entry.action, "delete");
-  assert.equal(entry.moderatorName, "ModUser");
-  assert.equal(entry.reason, "abuse");
+  assert.ok(["ModUser", "NightMod"].includes(entry.moderatorName));
+
+  const filteredLog = await request(app)
+    .get("/api/discussions/moderation/log?targetType=review&moderatorName=night&action=delete&reason=off")
+    .set("X-User-Name", "ModUser")
+    .set("X-User-Role", "moderator");
+  assert.equal(filteredLog.status, 200);
+  assert.equal(filteredLog.body.length, 1);
+  assert.equal(filteredLog.body[0].moderatorName, "NightMod");
+  assert.equal(filteredLog.body[0].targetType, "review");
+  assert.equal(filteredLog.body[0].reason, "off-topic");
 
   // non-moderator cannot access deleted list
   const forbidden = await request(app)
