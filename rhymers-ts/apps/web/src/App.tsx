@@ -75,6 +75,11 @@ export function App() {
   const [workNumber, setWorkNumber] = useState("1");
   const [moderatorName, setModeratorName] = useState("ModUser");
   const [deleteReason, setDeleteReason] = useState("");
+  const [authorName, setAuthorName] = useState("Poet");
+  const [commentDraft, setCommentDraft] = useState("Fresh comment for moderation flow");
+  const [reviewTitle, setReviewTitle] = useState("Strong piece");
+  const [reviewDraft, setReviewDraft] = useState("This work has a clear voice and solid rhythm.");
+  const [reviewRating, setReviewRating] = useState("8");
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [deletedItems, setDeletedItems] = useState<DeletedItem[]>([]);
@@ -177,6 +182,60 @@ export function App() {
     }
   }
 
+  async function createComment(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await fetchJson<CommentItem>(`/api/discussions/contests/${encodeURIComponent(contestId)}/comments`, {
+        method: "POST",
+        headers: {
+          "X-User-Name": authorName,
+          "X-User-Role": "author"
+        },
+        body: JSON.stringify({ content: commentDraft.trim() })
+      });
+      setNotice("comment created");
+      await loadDashboard();
+    } catch (actionError: unknown) {
+      setError(actionError instanceof Error ? actionError.message : "unknown error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createReview(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const parsedRating = Number.parseInt(reviewRating, 10);
+      await fetchJson<ReviewItem>(
+        `/api/discussions/contests/${encodeURIComponent(contestId)}/works/${encodeURIComponent(workNumber)}/reviews`,
+        {
+          method: "POST",
+          headers: {
+            "X-User-Name": authorName,
+            "X-User-Role": "author"
+          },
+          body: JSON.stringify({
+            title: reviewTitle.trim(),
+            content: reviewDraft.trim(),
+            rating: Number.isNaN(parsedRating) ? undefined : parsedRating
+          })
+        }
+      );
+      setNotice("review created");
+      await loadDashboard();
+    } catch (actionError: unknown) {
+      setError(actionError instanceof Error ? actionError.message : "unknown error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="app">
       <section className="hero card">
@@ -209,6 +268,10 @@ export function App() {
           Moderator name
           <input value={moderatorName} onChange={(event) => setModeratorName(event.target.value)} />
         </label>
+        <label>
+          Author name
+          <input value={authorName} onChange={(event) => setAuthorName(event.target.value)} />
+        </label>
         <label className="reason-field">
           Delete reason
           <input value={deleteReason} onChange={(event) => setDeleteReason(event.target.value)} placeholder="spam, abuse, off-topic" />
@@ -216,6 +279,54 @@ export function App() {
         <button className="primary" disabled={busy} onClick={() => void loadDashboard()}>
           {busy ? "Refreshing..." : "Refresh dashboard"}
         </button>
+      </section>
+
+      <section className="grid composer-grid">
+        <article className="card panel">
+          <div className="panel-header">
+            <h2>Create comment</h2>
+          </div>
+          <div className="composer-fields">
+            <label>
+              Comment text
+              <textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} rows={5} />
+            </label>
+            <button
+              className="primary"
+              disabled={busy || !commentDraft.trim() || !authorName.trim()}
+              onClick={() => void createComment()}
+            >
+              Create comment
+            </button>
+          </div>
+        </article>
+
+        <article className="card panel">
+          <div className="panel-header">
+            <h2>Create review</h2>
+          </div>
+          <div className="composer-fields">
+            <label>
+              Review title
+              <input value={reviewTitle} onChange={(event) => setReviewTitle(event.target.value)} />
+            </label>
+            <label>
+              Review text
+              <textarea value={reviewDraft} onChange={(event) => setReviewDraft(event.target.value)} rows={5} />
+            </label>
+            <label>
+              Rating
+              <input value={reviewRating} onChange={(event) => setReviewRating(event.target.value)} />
+            </label>
+            <button
+              className="primary"
+              disabled={busy || !reviewTitle.trim() || !reviewDraft.trim() || !authorName.trim()}
+              onClick={() => void createReview()}
+            >
+              Create review
+            </button>
+          </div>
+        </article>
       </section>
 
       {notice && (
