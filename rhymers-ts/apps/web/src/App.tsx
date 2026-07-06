@@ -60,6 +60,8 @@ type TargetFilter = "all" | "comment" | "review";
 type ActionFilter = "all" | "delete" | "restore" | "hide" | "approve";
 type TimelineTarget = { targetType: "comment" | "review"; targetId: string } | null;
 type ParticipantRole = "reader" | "author" | "moderator" | "admin";
+type HelpActionId = "refresh-dashboard" | "create-comment" | "create-review" | "restore-first-deleted";
+type HelpAction = { id: HelpActionId; label: string };
 
 const DEFAULT_API_BASE = "http://localhost:4000";
 
@@ -80,7 +82,7 @@ function getLiveHelp(role: ParticipantRole, context: {
   deletedCount: number;
   timelineTarget: TimelineTarget;
   hasFilters: boolean;
-}): { headline: string; steps: string[] } {
+}): { headline: string; steps: string[]; actions: HelpAction[] } {
   if (role === "reader") {
     return {
       headline: "Reader help",
@@ -88,7 +90,8 @@ function getLiveHelp(role: ParticipantRole, context: {
         `Open contest ${context.contestId} to inspect visible comments and reviews without changing state.`,
         context.hasFilters ? "Clear filters if you want the full picture before reporting an issue." : "Use filters to focus on a specific author or moderation reason.",
         context.deletedCount > 0 ? "Deleted items exist, so ask a moderator if you need an explanation for a missing post." : "No deleted items are visible right now, so the discussion is currently clean."
-      ]
+      ],
+      actions: [{ id: "refresh-dashboard", label: "Refresh data" }]
     };
   }
 
@@ -99,6 +102,10 @@ function getLiveHelp(role: ParticipantRole, context: {
         `Create a comment or a review for work ${context.workNumber} to test the full publishing flow.`,
         context.commentsCount === 0 ? "Start with a comment so moderators have something concrete to review." : "Comments already exist, so you can iterate on moderation scenarios immediately.",
         context.reviewsCount === 0 ? "Add a review next to verify helpful, hide, and delete actions." : "Reviews are present, so you can test helpful and moderation actions live."
+      ],
+      actions: [
+        { id: "create-comment", label: "Do it for me: create comment" },
+        { id: "create-review", label: "Do it for me: create review" }
       ]
     };
   }
@@ -110,7 +117,13 @@ function getLiveHelp(role: ParticipantRole, context: {
         "Audit moderation log entries first, then drill into a specific timeline when something looks suspicious.",
         context.timelineTarget ? `Timeline is locked to ${context.timelineTarget.targetType}:${context.timelineTarget.targetId}; clear it to resume broad oversight.` : "Select Timeline on any item to inspect a full action chain on one target.",
         context.deletedCount > 0 ? "Restore items only after checking reason and matching the deletion against policy." : "No deleted items are waiting, so focus on approval and hidden-state hygiene."
-      ]
+      ],
+      actions: context.deletedCount > 0
+        ? [
+            { id: "restore-first-deleted", label: "Do it for me: restore latest deleted" },
+            { id: "refresh-dashboard", label: "Refresh data" }
+          ]
+        : [{ id: "refresh-dashboard", label: "Refresh data" }]
     };
   }
 
@@ -124,7 +137,16 @@ function getLiveHelp(role: ParticipantRole, context: {
         ? `You are tracing ${context.timelineTarget.targetType}:${context.timelineTarget.targetId}. Use this to confirm delete/restore order.`
         : "Pick Timeline on a comment, review, deleted item, or log entry to inspect one target end-to-end.",
       context.hasFilters ? "Filters are active; if counts look odd, clear them before assuming data is missing." : "No filters are active, so current counts reflect the whole selected contest/work scope."
-    ]
+    ],
+    actions: context.deletedCount > 0
+      ? [
+          { id: "restore-first-deleted", label: "Do it for me: restore latest deleted" },
+          { id: "refresh-dashboard", label: "Refresh data" }
+        ]
+      : [
+          { id: "create-comment", label: "Do it for me: create comment" },
+          { id: "create-review", label: "Do it for me: create review" }
+        ]
   };
 }
 
@@ -184,6 +206,21 @@ export function App() {
     timelineTarget,
     hasFilters: Boolean(targetFilter !== "all" || authorFilter || reasonFilter || moderatorFilter || actionFilter !== "all" || fromFilter || toFilter)
   });
+
+  const policyRecommendations = [
+    comments.some((comment) => comment.isHidden && !comment.isDeleted && comment.isApproved)
+      ? "Policy: hidden comments should usually be reviewed for approval state before leaving them in limbo."
+      : null,
+    reviews.some((review) => review.isHidden && !review.isDeleted && review.isApproved)
+      ? "Policy: hidden reviews are still approved, so confirm whether they should be hidden or fully deleted."
+      : null,
+    deletedItems.some((item) => !item.reason)
+      ? "Policy: at least one deleted item has no reason. Capture a reason to keep moderation history defensible."
+      : null,
+    timelineTarget && (authorFilter || moderatorFilter || reasonFilter || actionFilter !== "all")
+      ? "Policy: timeline is focused on one target while other filters remain active, so verify that missing events are not being filtered out."
+      : null
+  ].filter((item): item is string => item !== null);
 
   function pushLogEntry(entry: ModerationAction): void {
     setModerationLog((current) => [entry, ...current].slice(0, 20));
@@ -493,6 +530,27 @@ export function App() {
     setTimelineTarget({ targetType, targetId });
   }
 
+  async function runHelpAction(actionId: HelpActionId): Promise<void> {
+    if (actionId === "refresh-dashboard") {
+      await loadDashboard();
+      return;
+    }
+
+    if (actionId === "create-comment") {
+      await createComment();
+      return;
+    }
+
+    if (actionId === "create-review") {
+      await createReview();
+      return;
+    }
+
+    if (actionId === "restore-first-deleted" && deletedItems[0]) {
+      await restoreTarget(deletedItems[0].targetType, deletedItems[0].targetId);
+    }
+  }
+
   async function createComment(): Promise<void> {
     setBusy(true);
     setError(null);
@@ -616,6 +674,24 @@ export function App() {
               <p>{step}</p>
             </div>
           ))}
+          {liveHelp.actions.length > 0 && (
+            <div className="actions">
+              {liveHelp.actions.map((action) => (
+                <button key={action.id} disabled={busy} onClick={() => void runHelpAction(action.id)}>
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {policyRecommendations.length > 0 && (
+            <div className="stack">
+              {policyRecommendations.map((recommendation) => (
+                <div className="item" key={recommendation}>
+                  <p><strong>Policy hint:</strong> {recommendation}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
