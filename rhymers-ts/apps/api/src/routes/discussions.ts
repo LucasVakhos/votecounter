@@ -1,5 +1,5 @@
 import express from "express";
-import type { AddCommentRequest, AddReviewRequest, ReviewStatsResponse, WorkReview } from "@rhymers/shared";
+import type { AddCommentRequest, AddReviewRequest, ModeratorDeleteRequest, ReviewStatsResponse, WorkReview } from "@rhymers/shared";
 import { getCurrentUser, requireRole } from "../auth.js";
 import {
   addComment,
@@ -7,15 +7,19 @@ import {
   approveComment,
   approveReview,
   getComments,
+  getDeletedItems,
+  getModerationLog,
   getReviews,
   getReviewStats,
   hideComment,
   hideReview,
   likeComment,
   markReviewHelpful,
+  restoreComment,
+  restoreReview,
+  setAuthorResponse,
   softDeleteMortalComment,
-  softDeleteMortalReview,
-  setAuthorResponse
+  softDeleteMortalReview
 } from "../repositories/discussions-repository.js";
 
 export const discussionsRouter = express.Router();
@@ -89,7 +93,8 @@ discussionsRouter.post("/comments/:commentId/delete", (req, res) => {
     return;
   }
 
-  const result = softDeleteMortalComment(req.params.commentId, user.displayName);
+  const reason = (req.body as ModeratorDeleteRequest | undefined)?.reason?.trim() || undefined;
+  const result = softDeleteMortalComment(req.params.commentId, user.displayName, reason);
   if (result === "ok") {
     res.json({ ok: true });
     return;
@@ -100,6 +105,27 @@ discussionsRouter.post("/comments/:commentId/delete", (req, res) => {
   }
 
   res.status(404).json({ error: "Comment not found" });
+});
+
+discussionsRouter.post("/comments/:commentId/restore", (req, res) => {
+  const user = getCurrentUser(req);
+  if (!requireRole(user, "moderator")) {
+    res.status(403).json({ error: "Moderator role required" });
+    return;
+  }
+
+  if (!user) {
+    res.status(403).json({ error: "Moderator role required" });
+    return;
+  }
+
+  const result = restoreComment(req.params.commentId, user.displayName);
+  if (result === "ok") {
+    res.json({ ok: true });
+    return;
+  }
+
+  res.status(404).json({ error: "Comment not found or not deleted" });
 });
 
 discussionsRouter.get("/contests/:contestId/works/:workNumber/reviews", (req, res) => {
@@ -187,7 +213,8 @@ discussionsRouter.post("/reviews/:reviewId/delete", (req, res) => {
     return;
   }
 
-  const result = softDeleteMortalReview(req.params.reviewId, user.displayName);
+  const reason = (req.body as ModeratorDeleteRequest | undefined)?.reason?.trim() || undefined;
+  const result = softDeleteMortalReview(req.params.reviewId, user.displayName, reason);
   if (result === "ok") {
     res.json({ ok: true });
     return;
@@ -198,6 +225,49 @@ discussionsRouter.post("/reviews/:reviewId/delete", (req, res) => {
   }
 
   res.status(404).json({ error: "Review not found" });
+});
+
+discussionsRouter.post("/reviews/:reviewId/restore", (req, res) => {
+  const user = getCurrentUser(req);
+  if (!requireRole(user, "moderator")) {
+    res.status(403).json({ error: "Moderator role required" });
+    return;
+  }
+
+  if (!user) {
+    res.status(403).json({ error: "Moderator role required" });
+    return;
+  }
+
+  const result = restoreReview(req.params.reviewId, user.displayName);
+  if (result === "ok") {
+    res.json({ ok: true });
+    return;
+  }
+
+  res.status(404).json({ error: "Review not found or not deleted" });
+});
+
+discussionsRouter.get("/moderation/deleted", (req, res) => {
+  const user = getCurrentUser(req);
+  if (!requireRole(user, "moderator")) {
+    res.status(403).json({ error: "Moderator role required" });
+    return;
+  }
+
+  const contestId = typeof req.query.contestId === "string" ? req.query.contestId : undefined;
+  res.json(getDeletedItems(contestId));
+});
+
+discussionsRouter.get("/moderation/log", (req, res) => {
+  const user = getCurrentUser(req);
+  if (!requireRole(user, "moderator")) {
+    res.status(403).json({ error: "Moderator role required" });
+    return;
+  }
+
+  const limit = Number(req.query.limit) || 100;
+  res.json(getModerationLog(limit));
 });
 
 discussionsRouter.post("/reviews/:reviewId/author-response", (req, res) => {

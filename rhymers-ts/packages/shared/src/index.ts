@@ -145,3 +145,31 @@ export interface ReviewStatsResponse {
   averageRating?: number;
   topReviewsCount: number;
 }
+
+export type ModerationActionKind = "delete" | "restore" | "hide" | "approve";
+export type ModerationTargetType = "comment" | "review";
+
+export interface ModerationAction {
+  id: string;
+  moderatorName: string;
+  action: ModerationActionKind;
+  targetType: ModerationTargetType;
+  targetId: string;
+  reason?: string;
+  performedAt: string;
+}
+
+export interface ModeratorDeleteRequest {
+  reason?: string;
+}
+
+export interface DeletedItem {
+  targetType: ModerationTargetType;
+  targetId: string;
+  contestId: string;
+  authorName: string;
+  deletedBy: string;
+  deletedAt: string;
+  reason?: string;
+  originalContent: string;
+}

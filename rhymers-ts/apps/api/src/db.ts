@@ -6,6 +6,9 @@ import type {
   ContestComment,
   ContestSorrowMessage,
   ContestWork,
+  ModerationAction,
+  ModerationActionKind,
+  ModerationTargetType,
   UserRole,
   VoteEntry,
   WorkReview
@@ -56,7 +59,18 @@ export type CommentRow = {
   is_deleted: 0 | 1;
   deleted_at: string | null;
   deleted_by: string | null;
+  delete_reason: string | null;
   created_at: string;
+};
+
+export type ModerationActionRow = {
+  id: string;
+  moderator_name: string;
+  action: ModerationActionKind;
+  target_type: ModerationTargetType;
+  target_id: string;
+  reason: string | null;
+  performed_at: string;
 };
 
 export type ReviewRow = {
@@ -78,6 +92,7 @@ export type ReviewRow = {
   is_deleted: 0 | 1;
   deleted_at: string | null;
   deleted_by: string | null;
+  delete_reason: string | null;
   created_at: string;
 };
 
@@ -136,6 +151,18 @@ export function mapComment(row: CommentRow): ContestComment {
     deletedAt: row.deleted_at ?? undefined,
     deletedBy: row.deleted_by ?? undefined,
     createdAt: row.created_at
+  };
+}
+
+export function mapModerationAction(row: ModerationActionRow): ModerationAction {
+  return {
+    id: row.id,
+    moderatorName: row.moderator_name,
+    action: row.action,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    reason: row.reason ?? undefined,
+    performedAt: row.performed_at
   };
 }
 

@@ -1,5 +1,5 @@
-import type { AddReviewRequest, ReviewStatsResponse, User, WorkReview } from "@rhymers/shared";
-import { db, mapComment, mapReview, type CommentRow, type ReviewRow } from "../db.js";
+import type { AddReviewRequest, DeletedItem, ModerationAction, ModerationActionKind, ModerationTargetType, ReviewStatsResponse, User, WorkReview } from "@rhymers/shared";
+import { db, mapComment, mapModerationAction, mapReview, type CommentRow, type ModerationActionRow, type ReviewRow } from "../db.js";
 
 export function getComments(contestId: string) {
   return (
@@ -22,6 +22,9 @@ export function addComment(contestId: string, user: User, content: string, paren
     likesCount: 0,
     isApproved: true,
     isHidden: false,
+    isDeleted: false,
+    deletedAt: undefined,
+    deletedBy: undefined,
     createdAt: new Date().toISOString()
   };
 
@@ -61,9 +64,11 @@ export function hideComment(commentId: string): boolean {
   return result.changes > 0;
 }
 
-export type SoftDeleteCommentResult = "ok" | "not_found" | "forbidden_target";
+export type SoftDeleteResult = "ok" | "not_found" | "forbidden_target";
+// legacy alias
+export type SoftDeleteCommentResult = SoftDeleteResult;
 
-export function softDeleteMortalComment(commentId: string, moderatorName: string): SoftDeleteCommentResult {
+export function softDeleteMortalComment(commentId: string, moderatorName: string, reason?: string): SoftDeleteResult {
   const target = db
     .prepare("SELECT author_role FROM contest_comments WHERE id = ?")
     .get(commentId) as { author_role: User["role"] } | undefined;
@@ -76,13 +81,40 @@ export function softDeleteMortalComment(commentId: string, moderatorName: string
     return "forbidden_target";
   }
 
+  const now = new Date().toISOString();
   const result = db
     .prepare(
-      "UPDATE contest_comments SET is_deleted = 1, is_hidden = 1, is_approved = 0, deleted_at = ?, deleted_by = ? WHERE id = ? AND is_deleted = 0"
+      "UPDATE contest_comments SET is_deleted = 1, is_hidden = 1, is_approved = 0, deleted_at = ?, deleted_by = ?, delete_reason = ? WHERE id = ? AND is_deleted = 0"
     )
-    .run(new Date().toISOString(), moderatorName, commentId);
+    .run(now, moderatorName, reason ?? null, commentId);
 
-  return result.changes > 0 ? "ok" : "not_found";
+  if (result.changes > 0) {
+    logModerationAction(moderatorName, "delete", "comment", commentId, reason);
+    return "ok";
+  }
+  return "not_found";
+}
+
+export function restoreComment(commentId: string, moderatorName: string): SoftDeleteResult {
+  const target = db
+    .prepare("SELECT is_deleted FROM contest_comments WHERE id = ?")
+    .get(commentId) as { is_deleted: 0 | 1 } | undefined;
+
+  if (!target) {
+    return "not_found";
+  }
+
+  const result = db
+    .prepare(
+      "UPDATE contest_comments SET is_deleted = 0, is_hidden = 0, is_approved = 1, deleted_at = NULL, deleted_by = NULL, delete_reason = NULL WHERE id = ? AND is_deleted = 1"
+    )
+    .run(commentId);
+
+  if (result.changes > 0) {
+    logModerationAction(moderatorName, "restore", "comment", commentId);
+    return "ok";
+  }
+  return "not_found";
 }
 
 export function getReviews(contestId: string, workNumber: number) {
@@ -177,9 +209,9 @@ export function hideReview(reviewId: string): boolean {
   return result.changes > 0;
 }
 
-export type SoftDeleteReviewResult = "ok" | "not_found" | "forbidden_target";
+export type SoftDeleteReviewResult = SoftDeleteResult;
 
-export function softDeleteMortalReview(reviewId: string, moderatorName: string): SoftDeleteReviewResult {
+export function softDeleteMortalReview(reviewId: string, moderatorName: string, reason?: string): SoftDeleteResult {
   const target = db
     .prepare("SELECT reviewer_role FROM work_reviews WHERE id = ?")
     .get(reviewId) as { reviewer_role: User["role"] } | undefined;
@@ -192,13 +224,105 @@ export function softDeleteMortalReview(reviewId: string, moderatorName: string):
     return "forbidden_target";
   }
 
+  const now = new Date().toISOString();
   const result = db
     .prepare(
-      "UPDATE work_reviews SET is_deleted = 1, is_hidden = 1, is_approved = 0, deleted_at = ?, deleted_by = ? WHERE id = ? AND is_deleted = 0"
+      "UPDATE work_reviews SET is_deleted = 1, is_hidden = 1, is_approved = 0, deleted_at = ?, deleted_by = ?, delete_reason = ? WHERE id = ? AND is_deleted = 0"
     )
-    .run(new Date().toISOString(), moderatorName, reviewId);
+    .run(now, moderatorName, reason ?? null, reviewId);
 
-  return result.changes > 0 ? "ok" : "not_found";
+  if (result.changes > 0) {
+    logModerationAction(moderatorName, "delete", "review", reviewId, reason);
+    return "ok";
+  }
+  return "not_found";
+}
+
+export function restoreReview(reviewId: string, moderatorName: string): SoftDeleteResult {
+  const target = db
+    .prepare("SELECT is_deleted FROM work_reviews WHERE id = ?")
+    .get(reviewId) as { is_deleted: 0 | 1 } | undefined;
+
+  if (!target) {
+    return "not_found";
+  }
+
+  const result = db
+    .prepare(
+      "UPDATE work_reviews SET is_deleted = 0, is_hidden = 0, is_approved = 1, deleted_at = NULL, deleted_by = NULL, delete_reason = NULL WHERE id = ? AND is_deleted = 1"
+    )
+    .run(reviewId);
+
+  if (result.changes > 0) {
+    logModerationAction(moderatorName, "restore", "review", reviewId);
+    return "ok";
+  }
+  return "not_found";
+}
+
+export function logModerationAction(
+  moderatorName: string,
+  action: ModerationActionKind,
+  targetType: ModerationTargetType,
+  targetId: string,
+  reason?: string
+): void {
+  db.prepare(
+    "INSERT INTO moderation_actions(id, moderator_name, action, target_type, target_id, reason, performed_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(crypto.randomUUID(), moderatorName, action, targetType, targetId, reason ?? null, new Date().toISOString());
+}
+
+export function getModerationLog(limit = 100): ModerationAction[] {
+  return (
+    db
+      .prepare("SELECT id, moderator_name, action, target_type, target_id, reason, performed_at FROM moderation_actions ORDER BY performed_at DESC LIMIT ?")
+      .all(limit) as ModerationActionRow[]
+  ).map(mapModerationAction);
+}
+
+export function getDeletedItems(contestId?: string): DeletedItem[] {
+  const comments = db
+    .prepare(
+      "SELECT 'comment' AS target_type, id, contest_id, author_name, deleted_by, deleted_at, delete_reason, content FROM contest_comments WHERE is_deleted = 1" +
+      (contestId ? " AND contest_id = ?" : "")
+    )
+    .all(...(contestId ? [contestId] : [])) as Array<{
+      target_type: "comment";
+      id: string;
+      contest_id: string;
+      author_name: string;
+      deleted_by: string | null;
+      deleted_at: string | null;
+      delete_reason: string | null;
+      content: string;
+    }>;
+
+  const reviews = db
+    .prepare(
+      "SELECT 'review' AS target_type, id, contest_id, reviewer_name AS author_name, deleted_by, deleted_at, delete_reason, title AS content FROM work_reviews WHERE is_deleted = 1" +
+      (contestId ? " AND contest_id = ?" : "")
+    )
+    .all(...(contestId ? [contestId] : [])) as Array<{
+      target_type: "review";
+      id: string;
+      contest_id: string;
+      author_name: string;
+      deleted_by: string | null;
+      deleted_at: string | null;
+      delete_reason: string | null;
+      content: string;
+    }>;
+
+  return [...comments, ...reviews].map((row) => ({
+    targetType: row.target_type,
+    targetId: row.id,
+    contestId: row.contest_id,
+    authorName: row.author_name,
+    deletedBy: row.deleted_by ?? "unknown",
+    deletedAt: row.deleted_at ?? "",
+    reason: row.delete_reason ?? undefined,
+    originalContent: row.content
+  }));
 }
 
 export function setAuthorResponse(reviewId: string, responseText: string): boolean {
