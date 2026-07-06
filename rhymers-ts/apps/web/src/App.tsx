@@ -14,6 +14,7 @@ type CommentItem = {
   content: string;
   createdAt: string;
   likesCount: number;
+  isApproved: boolean;
   isHidden: boolean;
   isDeleted: boolean;
   deletedBy?: string;
@@ -28,6 +29,7 @@ type ReviewItem = {
   createdAt: string;
   helpfulCount: number;
   rating?: number;
+  isApproved: boolean;
   isHidden: boolean;
   isDeleted: boolean;
   deletedBy?: string;
@@ -223,6 +225,24 @@ export function App() {
         method: "POST"
       });
       setNotice(`${targetType} restored`);
+      await loadDashboard();
+    } catch (actionError: unknown) {
+      setError(actionError instanceof Error ? actionError.message : "unknown error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runTargetAction(targetType: "comment" | "review", targetId: string, action: string): Promise<void> {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await fetchJson<{ ok: true }>(`/api/discussions/${targetType === "comment" ? "comments" : "reviews"}/${targetId}/${action}`, {
+        method: "POST"
+      });
+      setNotice(`${targetType} ${action}d`);
       await loadDashboard();
     } catch (actionError: unknown) {
       setError(actionError instanceof Error ? actionError.message : "unknown error");
@@ -452,10 +472,26 @@ export function App() {
                 <p>{comment.content}</p>
                 <div className="item-footer">
                   <span>Likes: {comment.likesCount}</span>
+                  <span>{comment.isApproved ? "Approved" : "Pending"}</span>
                   <span>{comment.isHidden ? "Hidden" : "Visible"}</span>
                   <span>{comment.isDeleted ? `Deleted by ${comment.deletedBy ?? "?"}` : "Active"}</span>
                 </div>
                 <div className="actions">
+                  {!comment.isDeleted && (
+                    <button disabled={busy} onClick={() => void runTargetAction("comment", comment.id, "like")}>
+                      Like
+                    </button>
+                  )}
+                  {!comment.isDeleted && (
+                    <button disabled={busy} onClick={() => void runTargetAction("comment", comment.id, "approve")}>
+                      Approve
+                    </button>
+                  )}
+                  {!comment.isDeleted && (
+                    <button disabled={busy} onClick={() => void runTargetAction("comment", comment.id, "hide")}>
+                      Hide
+                    </button>
+                  )}
                   {!comment.isDeleted && (
                     <button disabled={busy} onClick={() => void deleteTarget("comment", comment.id)}>
                       Delete
@@ -491,9 +527,26 @@ export function App() {
                 <div className="item-footer">
                   <span>Helpful: {review.helpfulCount}</span>
                   <span>Rating: {review.rating ?? "-"}</span>
+                  <span>{review.isApproved ? "Approved" : "Pending"}</span>
+                  <span>{review.isHidden ? "Hidden" : "Visible"}</span>
                   <span>{review.isDeleted ? `Deleted by ${review.deletedBy ?? "?"}` : "Active"}</span>
                 </div>
                 <div className="actions">
+                  {!review.isDeleted && (
+                    <button disabled={busy} onClick={() => void runTargetAction("review", review.id, "helpful")}>
+                      Helpful
+                    </button>
+                  )}
+                  {!review.isDeleted && (
+                    <button disabled={busy} onClick={() => void runTargetAction("review", review.id, "approve")}>
+                      Approve
+                    </button>
+                  )}
+                  {!review.isDeleted && (
+                    <button disabled={busy} onClick={() => void runTargetAction("review", review.id, "hide")}>
+                      Hide
+                    </button>
+                  )}
                   {!review.isDeleted && (
                     <button disabled={busy} onClick={() => void deleteTarget("review", review.id)}>
                       Delete
