@@ -12,6 +12,7 @@
                     <strong>@currentUser.DisplayName</strong> 
                     <small class="badge @GetRoleBadgeClass(currentUser.Role)">@GetRoleDisplay(currentUser.Role)</small>
                 </span>
+                <a href="my-submissions" class="btn btn-sm btn-outline-light me-2">👤 ЛК</a>
                 <button @onclick="LogoutAsync" class="btn btn-sm btn-outline-light">🔒 Выход</button>
             }
             else

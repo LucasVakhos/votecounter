@@ -16,12 +16,21 @@ public sealed class AuthorizationWebService
     }
 
     /// <summary>
-    /// Зарегистрировать нового пользователя (обычно при первой регистрации)
+    /// Зарегистрировать нового пользователя с паролем
     /// </summary>
-    public async Task<User> RegisterUserAsync(string username, string displayName, string email, UserRole role = UserRole.Reader)
+    public async Task<User> RegisterUserAsync(string username, string displayName, string email, string password, UserRole role = UserRole.Reader)
     {
-        var user = _authService.RegisterUser(username, displayName, email, role);
+        var user = _authService.RegisterUser(username, displayName, email, password, role);
         return await Task.FromResult(user);
+    }
+
+    /// <summary>
+    /// Логин пользователя по паролю
+    /// </summary>
+    public async Task<(bool success, string? error)> LoginAsync(string username, string password)
+    {
+        var (success, error) = _authService.LoginAsync(username, password);
+        return await Task.FromResult((success, error));
     }
 
     /// <summary>

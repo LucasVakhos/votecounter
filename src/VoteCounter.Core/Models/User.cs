@@ -16,6 +16,11 @@ public sealed class User
     public string Username { get; set; } = string.Empty;
 
     /// <summary>
+    /// Хеш пароля (BCrypt)
+    /// </summary>
+    public string PasswordHash { get; set; } = string.Empty;
+
+    /// <summary>
     /// Дисплей-имя (для отображения в интерфейсе)
     /// </summary>
     public string DisplayName { get; set; } = string.Empty;
@@ -75,6 +80,7 @@ public sealed class User
             Notes = Notes,
             AuthorProfileId = AuthorProfileId,
             ModeratedContests = new List<string>(ModeratedContests)
+            // PasswordHash НЕ копируем для безопасности
         };
     }
 

@@ -1,0 +1,407 @@
+@page "/admin-panel"
+@using VoteCounter.Web.Services
+@using VoteCounter.Core.Models
+@inject AuthorizationWebService AuthService
+@inject ContestService ContestService
+@inject NavigationManager NavManager
+@inject IJSRuntime JSRuntime
+
+@if (currentUser == null)
+{
+    <div class="container mt-4">
+        <div class="alert alert-danger" role="alert">
+            <h4 class="alert-heading">🔒 Требуется вход</h4>
+            <p>Пожалуйста, авторизуйтесь.</p>
+            <a href="/auth/login" class="btn btn-primary">Перейти на страницу входа</a>
+        </div>
+    </div>
+}
+else if (currentUser.Role != UserRole.Admin)
+{
+    <div class="container mt-4">
+        <div class="alert alert-danger" role="alert">
+            <h4 class="alert-heading">⛔ Доступ запрещён</h4>
+            <p>Эта страница доступна только для администраторов.</p>
+            <p>Ваша текущая роль: <strong>@GetRoleDisplay(currentUser.Role)</strong></p>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container-fluid mt-4">
+        <h1>👨‍💼 Админ-панель</h1>
+        
+        <ul class="nav nav-tabs mb-4" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button" role="tab">
+                    👥 Пользователи (@(allUsers?.Count ?? 0))
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="moderators-tab" data-bs-toggle="tab" data-bs-target="#moderators" type="button" role="tab">
+                    🔍 Модераторы (@(moderators?.Count ?? 0))
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats" type="button" role="tab">
+                    📊 Статистика
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+            <!-- USERS TAB -->
+            <div class="tab-pane fade show active" id="users" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-12">
+                        <h3>Все пользователи системы</h3>
+                        
+                        @if (isLoading)
+                        {
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Загрузка...</span>
+                            </div>
+                        }
+                        else if (allUsers == null || allUsers.Count == 0)
+                        {
+                            <div class="alert alert-info">Нет пользователей</div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Имя пользователя</th>
+                                            <th>Отображаемое имя</th>
+                                            <th>Email</th>
+                                            <th>Роль</th>
+                                            <th>Статус</th>
+                                            <th>Зарегистрирован</th>
+                                            <th>Действия</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var user in allUsers)
+                                        {
+                                            <tr>
+                                                <td><strong>@user.Username</strong></td>
+                                                <td>@user.DisplayName</td>
+                                                <td>@user.Email</td>
+                                                <td>
+                                                    <span class="badge @GetRoleBadgeClass(user.Role)">
+                                                        @GetRoleDisplay(user.Role)
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    @if (user.IsActive)
+                                                    {
+                                                        <span class="badge bg-success">🟢 Активен</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-danger">🔴 Отключен</span>
+                                                    }
+                                                </td>
+                                                <td>@user.CreatedAt.ToString("dd.MM.yyyy HH:mm")</td>
+                                                <td>
+                                                    @if (user.Username != currentUser.Username)
+                                                    {
+                                                        @if (user.IsActive)
+                                                        {
+                                                            <button class="btn btn-sm btn-warning" @onclick="() => ToggleUserStatusAsync(user, false)">
+                                                                🔒 Отключить
+                                                            </button>
+                                                        }
+                                                        else
+                                                        {
+                                                            <button class="btn btn-sm btn-success" @onclick="() => ToggleUserStatusAsync(user, true)">
+                                                                🔓 Включить
+                                                            </button>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <em class="text-muted">Это вы</em>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODERATORS TAB -->
+            <div class="tab-pane fade" id="moderators" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h3>Управление модераторами</h3>
+                        
+                        @if (moderators == null || moderators.Count == 0)
+                        {
+                            <div class="alert alert-info">Нет модераторов</div>
+                        }
+                        else
+                        {
+                            <div class="list-group">
+                                @foreach (var mod in moderators)
+                                {
+                                    <div class="list-group-item">
+                                        <div class="d-flex w-100 justify-content-between">
+                                            <h5 class="mb-1">🔍 @mod.DisplayName (@mod.Username)</h5>
+                                            <button class="btn btn-sm btn-danger" @onclick="() => RemoveModeratorAsync(mod)">
+                                                ❌ Снять с модерации
+                                            </button>
+                                        </div>
+                                        <p class="mb-1">
+                                            <strong>Email:</strong> @mod.Email<br />
+                                            <strong>Конкурсы:</strong> 
+                                            @if (mod.ModeratedContests?.Count > 0)
+                                            {
+                                                <span>@string.Join(", ", mod.ModeratedContests)</span>
+                                            }
+                                            else
+                                            {
+                                                <em class="text-muted">Нет</em>
+                                            }
+                                        </p>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <div class="col-md-4">
+                        <h3>Назначить модератора</h3>
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label for="authorSelect" class="form-label">Выберите автора:</label>
+                                    <select @bind="selectedAuthorUsername" class="form-select">
+                                        <option value="">-- Выберите --</option>
+                                        @if (authors != null)
+                                        {
+                                            @foreach (var author in authors)
+                                            {
+                                                <option value="@author.Username">@author.DisplayName (@author.Username)</option>
+                                            }
+                                        }
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="contestSelect" class="form-label">Конкурсы:</label>
+                                    <div class="form-check">
+                                        @if (contests != null)
+                                        {
+                                            @foreach (var contest in contests)
+                                            {
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" 
+                                                           @onchange="e => ToggleContest(contest.Id, (bool)e.Value)"
+                                                           id="contest_@contest.Id" />
+                                                    <label class="form-check-label" for="contest_@contest.Id">
+                                                        @contest.Name (№@contest.Number)
+                                                    </label>
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                </div>
+
+                                <button class="btn btn-primary w-100" @onclick="AssignModeratorAsync" disabled="@string.IsNullOrEmpty(selectedAuthorUsername)">
+                                    ➕ Назначить модератора
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STATS TAB -->
+            <div class="tab-pane fade" id="stats" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">👥 Всего пользователей</h5>
+                                <h2 class="card-text text-primary">@(allUsers?.Count ?? 0)</h2>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">✍️ Авторов</h5>
+                                <h2 class="card-text text-success">@(authors?.Count ?? 0)</h2>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">🔍 Модераторов</h5>
+                                <h2 class="card-text text-info">@(moderators?.Count ?? 0)</h2>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">👤 Читателей</h5>
+                                <h2 class="card-text text-warning">@(readers?.Count ?? 0)</h2>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-4">
+                    <div class="col-md-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">📈 Детальная статистика</h5>
+                            </div>
+                            <div class="card-body">
+                                <ul class="list-unstyled">
+                                    <li class="mb-2">
+                                        <strong>Активных пользователей:</strong> 
+                                        @(allUsers?.Count(u => u.IsActive) ?? 0)
+                                    </li>
+                                    <li class="mb-2">
+                                        <strong>Отключенных пользователей:</strong> 
+                                        @(allUsers?.Count(u => !u.IsActive) ?? 0)
+                                    </li>
+                                    <li class="mb-2">
+                                        <strong>Конкурсов в системе:</strong> 
+                                        @(contests?.Count ?? 0)
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private User? currentUser;
+    private List<User>? allUsers;
+    private List<User>? moderators;
+    private List<User>? authors;
+    private List<User>? readers;
+    private List<Contest>? contests;
+    private bool isLoading = false;
+
+    private string selectedAuthorUsername = "";
+    private List<string> selectedContestIds = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        if (currentUser?.Role == UserRole.Admin)
+        {
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            isLoading = true;
+            allUsers = await AuthService.GetAllUsersAsync(currentUser!);
+            moderators = await AuthService.GetAllModeratorsAsync(currentUser!);
+            
+            authors = allUsers?.Where(u => u.Role == UserRole.Author).ToList();
+            readers = allUsers?.Where(u => u.Role == UserRole.Reader).ToList();
+            
+            var contestList = (await ContestService.GetContestsAsync()).ToList();
+            contests = contestList;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ToggleUserStatusAsync(User user, bool newStatus)
+    {
+        if (user.IsActive == newStatus)
+            return;
+
+        var reason = newStatus ? "Включен администратором" : "Отключен администратором";
+        if (!newStatus)
+        {
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+                $"Вы уверены, что хотите отключить пользователя {user.DisplayName}?");
+            if (!confirmed)
+                return;
+
+            await AuthService.DisableUserAsync(currentUser!, user.Username, reason);
+        }
+        
+        await LoadDataAsync();
+    }
+
+    private async Task RemoveModeratorAsync(User moderator)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm",
+            $"Вы уверены, что хотите снять {moderator.DisplayName} с модерации?");
+        if (confirmed)
+        {
+            await AuthService.RemoveModeratorAsync(currentUser!, moderator.Username);
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task AssignModeratorAsync()
+    {
+        if (string.IsNullOrEmpty(selectedAuthorUsername) || selectedContestIds.Count == 0)
+            return;
+
+        await AuthService.AssignModeratorAsync(currentUser!, selectedAuthorUsername, selectedContestIds);
+        selectedAuthorUsername = "";
+        selectedContestIds.Clear();
+        await LoadDataAsync();
+    }
+
+    private void ToggleContest(string contestId, bool isChecked)
+    {
+        if (isChecked)
+        {
+            if (!selectedContestIds.Contains(contestId))
+                selectedContestIds.Add(contestId);
+        }
+        else
+        {
+            selectedContestIds.Remove(contestId);
+        }
+    }
+
+    private string GetRoleDisplay(UserRole role) => role switch
+    {
+        UserRole.Reader => "👤 Читатель/Оценщик",
+        UserRole.Author => "✍️ Автор",
+        UserRole.Moderator => "🔍 Модератор",
+        UserRole.Admin => "👨‍💼 Администратор",
+        _ => "?"
+    };
+
+    private string GetRoleBadgeClass(UserRole role) => role switch
+    {
+        UserRole.Reader => "bg-info",
+        UserRole.Author => "bg-success",
+        UserRole.Moderator => "bg-warning text-dark",
+        UserRole.Admin => "bg-danger",
+        _ => "bg-secondary"
+    };
+}

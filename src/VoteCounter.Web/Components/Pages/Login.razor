@@ -14,23 +14,18 @@
                 <div class="card-body">
                     <div class="mb-3">
                         <label class="form-label">Имя пользователя</label>
-                        <input type="text" @bind="username" class="form-control" placeholder="Введите имя пользователя">
+                        <input type="text" @bind="username" class="form-control" placeholder="Введите имя пользователя" @onkeyup="@((KeyboardEventArgs e) => HandleKeyPress(e))">
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label">Роль (для демо)</label>
-                        <select @bind="selectedRole" class="form-select">
-                            <option value="@UserRole.Reader">👤 Читатель/Оценщик</option>
-                            <option value="@UserRole.Author">✍️ Автор</option>
-                            <option value="@UserRole.Moderator">🔍 Модератор</option>
-                            <option value="@UserRole.Admin">👨‍💼 Администратор</option>
-                        </select>
+                        <label class="form-label">Пароль</label>
+                        <input type="password" @bind="password" class="form-control" placeholder="Введите пароль" @onkeyup="@((KeyboardEventArgs e) => HandleKeyPress(e))">
                     </div>
 
                     <div class="alert alert-info" role="alert">
                         <small>
-                            <strong>Демо система:</strong> При входе будет создан/получен пользователь с выбранной ролью.<br/>
-                            В production приложении нужна реальная аутентификация.
+                            <strong>Демо учётные записи:</strong> reader1, author1, moderator1, admin1<br/>
+                            <strong>Пароль для всех:</strong> password123
                         </small>
                     </div>
 
@@ -54,26 +49,24 @@
                     </button>
                 </div>
             </div>
-
-            <div class="alert alert-secondary mt-4" role="alert">
-                <h6>Демо учётные записи:</h6>
-                <ul class="mb-0">
-                    <li><strong>reader1</strong> - 👤 Читатель</li>
-                    <li><strong>author1</strong> - ✍️ Автор</li>
-                    <li><strong>moderator1</strong> - 🔍 Модератор</li>
-                    <li><strong>admin1</strong> - 👨‍💼 Администратор</li>
-                </ul>
-            </div>
         </div>
     </div>
 </div>
 
 @code {
     private string username = "author1";
-    private UserRole selectedRole = UserRole.Author;
+    private string password = "";
     private string message = "";
     private bool isSuccess = false;
     private bool isLoading = false;
+
+    private void HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            _ = LoginAsync();
+        }
+    }
 
     private async Task LoginAsync()
     {
@@ -84,32 +77,35 @@
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            message = "❌ Введите пароль";
+            isSuccess = false;
+            return;
+        }
+
         try
         {
             isLoading = true;
 
-            // Получить или создать пользователя
-            var user = await AuthService.GetUserAsync(username);
+            // Попытаться логин с паролем
+            var (success, error) = await AuthService.LoginAsync(username, password);
             
-            if (user == null)
+            if (success)
             {
-                user = await AuthService.RegisterUserAsync(
-                    username,
-                    $"Пользователь {username}",
-                    $"{username}@example.com",
-                    selectedRole
-                );
+                var user = await AuthService.GetCurrentUserAsync();
+                message = $"✅ Вход выполнен! Добро пожаловать, {user?.DisplayName}!";
+                isSuccess = true;
+
+                // Через 2 секунды перенаправить на главную
+                await Task.Delay(2000);
+                Navigation.NavigateTo("/");
             }
-
-            // Установить текущего пользователя
-            await AuthService.SetCurrentUserAsync(user);
-
-            message = $"✅ Вход выполнен! Добро пожаловать, {user.DisplayName}!";
-            isSuccess = true;
-
-            // Через 2 секунды перенаправить на главную
-            await Task.Delay(2000);
-            Navigation.NavigateTo("/");
+            else
+            {
+                message = $"❌ {error}";
+                isSuccess = false;
+            }
         }
         catch (Exception ex)
         {

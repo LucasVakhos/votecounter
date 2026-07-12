@@ -1,5 +1,7 @@
 using VoteCounter.Core.Models;
+using VoteCounter.Core.Data;
 using VoteCounter.Data.Database;
+using Microsoft.EntityFrameworkCore;
 
 namespace VoteCounter.Web.Services;
 
@@ -8,16 +10,21 @@ namespace VoteCounter.Web.Services;
 /// </summary>
 public class ContestService
 {
-    private List<Contest> _contests = new();
+    private readonly VoteCounterDbContext _context;
     private List<VoteEntry> _votes = new();
+
+    public ContestService(VoteCounterDbContext context)
+    {
+        _context = context;
+    }
 
     /// <summary>
     /// Получить все конкурсы
     /// </summary>
     public async Task<IEnumerable<Contest>> GetContestsAsync()
     {
-        // TODO: Загрузить из базы данных
-        return await Task.FromResult(_contests);
+        var contests = await _context.Contests.OrderByDescending(c => c.CreatedAt).ToListAsync();
+        return contests;
     }
 
     /// <summary>
@@ -25,8 +32,8 @@ public class ContestService
     /// </summary>
     public async Task<Contest?> GetContestAsync(string id)
     {
-        var contest = _contests.FirstOrDefault(c => c.Id == id);
-        return await Task.FromResult(contest);
+        var contest = await _context.Contests.FirstOrDefaultAsync(c => c.Id == id);
+        return contest;
     }
 
     /// <summary>
@@ -34,19 +41,20 @@ public class ContestService
     /// </summary>
     public async Task<Contest> CreateContestAsync(string name)
     {
+        var contests = await _context.Contests.ToListAsync();
         var contest = new Contest
         {
             Id = Guid.NewGuid().ToString("N"),
-            Number = (_contests.Count + 1).ToString("000"),
+            Number = (contests.Count + 1).ToString("000"),
             Name = name,
             HostName = "Unknown",
             StartedAt = DateTime.Now
         };
 
-        _contests.Add(contest);
+        _context.Contests.Add(contest);
+        await _context.SaveChangesAsync();
         
-        // TODO: Сохранить в базу данных
-        return await Task.FromResult(contest);
+        return contest;
     }
 
     /// <summary>
@@ -54,11 +62,12 @@ public class ContestService
     /// </summary>
     public async Task AddWorkAsync(string contestId, ContestWork work)
     {
-        var contest = _contests.FirstOrDefault(c => c.Id == contestId);
+        var contest = await _context.Contests.FirstOrDefaultAsync(c => c.Id == contestId);
         if (contest != null)
         {
             contest.Works.Add(work);
-            // TODO: Сохранить в базу данных
+            _context.Contests.Update(contest);
+            await _context.SaveChangesAsync();
         }
 
         await Task.CompletedTask;
@@ -69,7 +78,7 @@ public class ContestService
     /// </summary>
     public async Task<IEnumerable<ContestWork>> GetWorksAsync(string contestId)
     {
-        var contest = _contests.FirstOrDefault(c => c.Id == contestId);
+        var contest = await _context.Contests.FirstOrDefaultAsync(c => c.Id == contestId);
         return await Task.FromResult(contest?.Works ?? new List<ContestWork>());
     }
 

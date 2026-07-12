@@ -1,0 +1,130 @@
+@page "/"
+@using VoteCounter.Web.Services
+@using VoteCounter.Core.Models
+@inject ContestService ContestService
+@inject AuthorizationWebService AuthService
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8">
+            <h1>🎭 Добро пожаловать в VoteCounter!</h1>
+            
+            @if (currentUser != null)
+            {
+                <div class="alert alert-info">
+                    Привет, <strong>@currentUser.DisplayName</strong>! Ваша роль: <strong>@GetRoleDisplay(currentUser.Role)</strong>
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-warning">
+                    👋 Пожалуйста, <a href="/auth/login" class="alert-link">авторизуйтесь</a> чтобы подать работу или проверять работы других авторов.
+                </div>
+            }
+
+            @if (currentContest != null)
+            {
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h3 class="card-title mb-0">📚 Текущий конкурс</h3>
+                    </div>
+                    <div class="card-body">
+                        <h4>@currentContest.Name</h4>
+                        <p class="text-muted">Конкурс №@currentContest.Number</p>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p>
+                                    <strong>Статус:</strong> 
+                                    @if (currentContest.IsActive)
+                                    {
+                                        <span class="badge bg-success">🟢 Активен</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">🔵 Завершен</span>
+                                    }
+                                </p>
+                                <p>
+                                    <strong>Начало:</strong> @currentContest.StartedAt.ToString("dd.MM.yyyy HH:mm")<br />
+                                    @if (currentContest.ClosedAt.HasValue)
+                                    {
+                                        <span><strong>Конец:</strong> @currentContest.ClosedAt.Value.ToString("dd.MM.yyyy HH:mm")</span>
+                                    }
+                                </p>
+                            </div>
+                            <div class="col-md-6">
+                                @if (currentUser?.Role >= UserRole.Author && currentContest.IsActive)
+                                {
+                                    <a href="/submit-work" class="btn btn-success btn-lg">📝 Подать работу</a>
+                                }
+                                <a href="/contests" class="btn btn-info">📺 Все конкурсы</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-info">
+                    <strong>ℹ️ Нет активных конкурсов</strong>
+                </div>
+            }
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">📊 Информация</h5>
+                </div>
+                <div class="card-body">
+                    <p>
+                        <strong>VoteCounter</strong> - система для проведения конкурсов и голосования за работы.
+                    </p>
+                    <hr />
+                    <div>
+                        @if (currentUser == null)
+                        {
+                            <p><strong>Быстрый вход:</strong></p>
+                            <a href="/auth/login" class="btn btn-primary btn-sm w-100 mb-2">🔐 Вход в систему</a>
+                        }
+                        else if (currentUser.Role == UserRole.Admin)
+                        {
+                            <p><strong>Администратор:</strong></p>
+                            <a href="/admin-panel" class="btn btn-danger btn-sm w-100 mb-2">👨‍💼 Админ-панель</a>
+                            <a href="/my-submissions" class="btn btn-outline-primary btn-sm w-100">👤 Личный кабинет</a>
+                        }
+                        else
+                        {
+                            <p><strong>Ваш профиль:</strong></p>
+                            <a href="/my-submissions" class="btn btn-outline-primary btn-sm w-100">👤 Личный кабинет</a>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private User? currentUser;
+    private Contest? currentContest;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        var contests = (await ContestService.GetContestsAsync()).ToList();
+        
+        // Выбираем первый активный конкурс или последний
+        currentContest = contests.FirstOrDefault(c => c.IsActive) ?? contests.FirstOrDefault();
+    }
+
+    private string GetRoleDisplay(UserRole role) => role switch
+    {
+        UserRole.Reader => "👤 Читатель/Оценщик",
+        UserRole.Author => "✍️ Автор",
+        UserRole.Moderator => "🔍 Модератор",
+        UserRole.Admin => "👨‍💼 Администратор",
+        _ => "?"
+    };
+}

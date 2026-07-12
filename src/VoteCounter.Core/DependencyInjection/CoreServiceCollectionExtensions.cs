@@ -20,11 +20,12 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<VoteAuditService>();
 
         // Moderation services
-        services.AddSingleton<ModerationService>();
+        services.AddScoped<ModerationService>();
         services.AddSingleton<ContentModerationService>();
 
         // Authorization and role management
-        services.AddSingleton<RoleAuthorizationService>();
+        services.AddSingleton<PasswordHasher>();
+        services.AddScoped<RoleAuthorizationService>();
 
         // Text processing services (sealed classes)
         services.AddSingleton<WorkTextImporter>();
@@ -42,6 +43,9 @@ public static class CoreServiceCollectionExtensions
         // Validation and checking services
         services.AddSingleton<ContestRulesAutoFixService>();
         services.AddSingleton<WorkSpellChecker>();
+
+        // Persistence service
+        services.AddScoped<PersistenceService>();
 
         return services;
     }

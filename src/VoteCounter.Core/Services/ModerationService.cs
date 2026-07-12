@@ -1,4 +1,6 @@
 using VoteCounter.Core.Models;
+using VoteCounter.Core.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace VoteCounter.Core.Services;
 
@@ -10,7 +12,12 @@ namespace VoteCounter.Core.Services;
 /// </remarks>
 public sealed class ModerationService
 {
-    private readonly Dictionary<string, List<WorkSubmission>> _submissions = new();
+    private readonly VoteCounterDbContext _context;
+
+    public ModerationService(VoteCounterDbContext context)
+    {
+        _context = context;
+    }
 
     /// <summary>
     /// Подать новую работу на модерацию.
@@ -35,12 +42,8 @@ public sealed class ModerationService
             SubmittedAt = DateTime.Now
         };
 
-        if (!_submissions.ContainsKey(contestId))
-        {
-            _submissions[contestId] = new List<WorkSubmission>();
-        }
-
-        _submissions[contestId].Add(submission);
+        _context.Submissions.Add(submission);
+        _context.SaveChanges();
         return submission;
     }
 
@@ -51,11 +54,9 @@ public sealed class ModerationService
     /// <returns>Список неодобренных работ</returns>
     public List<WorkSubmission> GetPendingSubmissions(string contestId)
     {
-        if (!_submissions.ContainsKey(contestId))
-            return new List<WorkSubmission>();
-
-        return _submissions[contestId]
-            .Where(s => s.Status == WorkStatus.PendingModeration || s.Status == WorkStatus.UnderReview)
+        return _context.Submissions
+            .Where(s => s.ContestId == contestId && 
+                        (s.Status == WorkStatus.PendingModeration || s.Status == WorkStatus.UnderReview))
             .OrderBy(s => s.SubmittedAt)
             .ToList();
     }
@@ -65,10 +66,10 @@ public sealed class ModerationService
     /// </summary>
     public List<WorkSubmission> GetAllSubmissions(string contestId)
     {
-        if (!_submissions.ContainsKey(contestId))
-            return new List<WorkSubmission>();
-
-        return _submissions[contestId].OrderByDescending(s => s.SubmittedAt).ToList();
+        return _context.Submissions
+            .Where(s => s.ContestId == contestId)
+            .OrderByDescending(s => s.SubmittedAt)
+            .ToList();
     }
 
     /// <summary>
@@ -89,6 +90,8 @@ public sealed class ModerationService
         submission.ModeratorName = moderatorName;
         submission.Work.Status = WorkStatus.Approved;
 
+        _context.Submissions.Update(submission);
+        _context.SaveChanges();
         return true;
     }
 
@@ -112,6 +115,8 @@ public sealed class ModerationService
         submission.ModerationNote = reason;
         submission.Work.Status = WorkStatus.Rejected;
 
+        _context.Submissions.Update(submission);
+        _context.SaveChanges();
         return true;
     }
 
@@ -125,6 +130,8 @@ public sealed class ModerationService
             return false;
 
         submission.Status = WorkStatus.UnderReview;
+        _context.Submissions.Update(submission);
+        _context.SaveChanges();
         return true;
     }
 
@@ -133,10 +140,7 @@ public sealed class ModerationService
     /// </summary>
     private WorkSubmission? GetSubmissionById(string contestId, string submissionId)
     {
-        if (!_submissions.ContainsKey(contestId))
-            return null;
-
-        return _submissions[contestId].FirstOrDefault(s => s.Id == submissionId);
+        return _context.Submissions.FirstOrDefault(s => s.ContestId == contestId && s.Id == submissionId);
     }
 
     /// <summary>
@@ -144,11 +148,8 @@ public sealed class ModerationService
     /// </summary>
     public List<ContestWork> GetApprovedWorks(string contestId)
     {
-        if (!_submissions.ContainsKey(contestId))
-            return new List<ContestWork>();
-
-        return _submissions[contestId]
-            .Where(s => s.Status == WorkStatus.Approved)
+        return _context.Submissions
+            .Where(s => s.ContestId == contestId && s.Status == WorkStatus.Approved)
             .Select(s => s.Work)
             .OrderBy(w => w.Number)
             .ToList();
@@ -164,13 +165,9 @@ public sealed class ModerationService
         if (string.IsNullOrEmpty(authorName))
             return new List<WorkSubmission>();
 
-        var result = new List<WorkSubmission>();
-        
-        foreach (var contestSubmissions in _submissions.Values)
-        {
-            result.AddRange(contestSubmissions.Where(s => s.Work.Author == authorName));
-        }
-
-        return result.OrderByDescending(s => s.SubmittedAt).ToList();
+        return _context.Submissions
+            .Where(s => s.Work.Author == authorName)
+            .OrderByDescending(s => s.SubmittedAt)
+            .ToList();
     }
 }

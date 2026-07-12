@@ -1,6 +1,8 @@
 namespace VoteCounter.Core.Services;
 
 using VoteCounter.Core.Models;
+using VoteCounter.Core.Data;
+using Microsoft.EntityFrameworkCore;
 
 /// <summary>
 /// Результат проверки доступа
@@ -19,15 +21,23 @@ public sealed class AuthorizationResult
 /// </summary>
 public sealed class RoleAuthorizationService
 {
-    private readonly Dictionary<string, User> _users = new();
+    private readonly VoteCounterDbContext _context;
+    private readonly PasswordHasher _passwordHasher;
     private User? _currentUser;
 
-    /// <summary>
-    /// Зарегистрировать пользователя
-    /// </summary>
-    public User RegisterUser(string username, string displayName, string email, UserRole role = UserRole.Reader)
+    public RoleAuthorizationService(VoteCounterDbContext context, PasswordHasher passwordHasher)
     {
-        if (_users.ContainsKey(username))
+        _context = context;
+        _passwordHasher = passwordHasher;
+    }
+
+    /// <summary>
+    /// Зарегистрировать пользователя с паролем
+    /// </summary>
+    public User RegisterUser(string username, string displayName, string email, string password, UserRole role = UserRole.Reader)
+    {
+        var existingUser = _context.Users.FirstOrDefault(u => u.Username == username);
+        if (existingUser != null)
             throw new InvalidOperationException($"Пользователь '{username}' уже существует");
 
         var user = new User
@@ -35,13 +45,36 @@ public sealed class RoleAuthorizationService
             Username = username,
             DisplayName = displayName,
             Email = email,
+            PasswordHash = _passwordHasher.HashPassword(password),
             Role = role,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
 
-        _users[username] = user;
+        _context.Users.Add(user);
+        _context.SaveChanges();
         return user;
+    }
+
+    /// <summary>
+    /// Логин пользователя по паролю
+    /// </summary>
+    public (bool success, string? error) LoginAsync(string username, string password)
+    {
+        var user = _context.Users.FirstOrDefault(u => u.Username == username);
+        
+        if (user == null)
+            return (false, "Пользователь не найден");
+
+        if (!user.IsActive)
+            return (false, "Учётная запись отключена");
+
+        if (!_passwordHasher.VerifyPassword(password, user.PasswordHash))
+            return (false, "Неверный пароль");
+
+        // Логин успешен
+        SetCurrentUser(user);
+        return (true, null);
     }
 
     /// <summary>
@@ -49,7 +82,7 @@ public sealed class RoleAuthorizationService
     /// </summary>
     public User? GetUser(string username)
     {
-        return _users.TryGetValue(username, out var user) && user.IsActive ? user : null;
+        return _context.Users.FirstOrDefault(u => u.Username == username && u.IsActive);
     }
 
     /// <summary>
@@ -61,6 +94,8 @@ public sealed class RoleAuthorizationService
         if (user != null)
         {
             user.LastLoginAt = DateTime.UtcNow;
+            _context.Users.Update(user);
+            _context.SaveChanges();
         }
     }
 
@@ -146,48 +181,57 @@ public sealed class RoleAuthorizationService
     /// <summary>
     /// Назначить модератора (Admin only)
     /// </summary>
-    public bool AssignModerator(User adminUser, string username, List<string> contestIds)
+    public bool AssignModerator(User? adminUser, string username, List<string> contestIds)
     {
-        if (adminUser.Role != UserRole.Admin)
+        if (adminUser?.Role != UserRole.Admin)
             return false;
 
-        if (!_users.TryGetValue(username, out var user))
+        var user = _context.Users.FirstOrDefault(u => u.Username == username);
+        if (user == null)
             return false;
 
         user.Role = UserRole.Moderator;
         user.ModeratedContests = contestIds;
+        _context.Users.Update(user);
+        _context.SaveChanges();
         return true;
     }
 
     /// <summary>
     /// Удалить роль модератора (Admin only)
     /// </summary>
-    public bool RemoveModerator(User adminUser, string username)
+    public bool RemoveModerator(User? adminUser, string username)
     {
-        if (adminUser.Role != UserRole.Admin)
+        if (adminUser?.Role != UserRole.Admin)
             return false;
 
-        if (!_users.TryGetValue(username, out var user))
+        var user = _context.Users.FirstOrDefault(u => u.Username == username);
+        if (user == null)
             return false;
 
-        user.Role = UserRole.Reader;
+        user.Role = UserRole.Author;
         user.ModeratedContests.Clear();
+        _context.Users.Update(user);
+        _context.SaveChanges();
         return true;
     }
 
     /// <summary>
     /// Отключить учётную запись (Admin only)
     /// </summary>
-    public bool DisableUser(User adminUser, string username, string? reason = null)
+    public bool DisableUser(User? adminUser, string username, string? reason = null)
     {
-        if (adminUser.Role != UserRole.Admin)
+        if (adminUser?.Role != UserRole.Admin)
             return false;
 
-        if (!_users.TryGetValue(username, out var user))
+        var user = _context.Users.FirstOrDefault(u => u.Username == username);
+        if (user == null)
             return false;
 
         user.IsActive = false;
         user.Notes = reason;
+        _context.Users.Update(user);
+        _context.SaveChanges();
         return true;
     }
 
@@ -199,7 +243,7 @@ public sealed class RoleAuthorizationService
         if (adminUser?.Role != UserRole.Admin)
             return new();
 
-        return _users.Values.ToList();
+        return _context.Users.ToList();
     }
 
     /// <summary>
@@ -210,6 +254,6 @@ public sealed class RoleAuthorizationService
         if (adminUser?.Role != UserRole.Admin)
             return new();
 
-        return _users.Values.Where(u => u.Role == UserRole.Moderator && u.IsActive).ToList();
+        return _context.Users.Where(u => u.Role == UserRole.Moderator && u.IsActive).ToList();
     }
 }
